@@ -1,0 +1,27 @@
+name: Cargo Test
+
+on: [push]
+
+jobs:
+  check:
+    strategy:
+      fail-fast: true
+    name: Cargo Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install rust stable
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - name: Build
+        run: cargo build
+
+      - name: Run tests
+        run: cargo test
+
+      - name: Lint
+        run: cargo clippy
+
+      - name: Fmt
+        run: cargo fmt --check
