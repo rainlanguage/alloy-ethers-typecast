@@ -3,7 +3,8 @@ name = "alloy-ethers-typecast"
 version = "0.1.0"
 edition = "2021"
 description = "Crate for safe typecasting between ethers and alloy types"
-license = "CAL-1.0" 
+license = "CAL-1.0"
+homepage = "https://github.com/rainlanguage/rain.interpreter" 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
