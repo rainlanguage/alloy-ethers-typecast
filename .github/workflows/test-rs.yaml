@@ -1,27 +1,22 @@
-name: Cargo Test
-
 on: [push]
+
+name: Crate
 
 jobs:
   check:
-    strategy:
-      fail-fast: true
-    name: Cargo Test
+    name: Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Install rust stable
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-      - name: Build
-        run: cargo build
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v4
+      - uses: DeterminateSystems/magic-nix-cache-action@v2
 
-      - name: Run tests
-        run: cargo test
+      - name: Lint Check
+        run: nix develop --command cargo clippy
 
-      - name: Lint
-        run: cargo clippy
+      - name: Cargo Fmt
+        run: nix develop --command cargo fmt --check
 
-      - name: Fmt
-        run: cargo fmt --check
+      - name: Cargo Test
+        run: nix develop --command cargo test
