@@ -1,12 +1,8 @@
 use crate::request_shim::{AlloyTransactionRequest, TransactionRequestShim};
 use ethers::providers::Middleware;
-use ethers::providers::Provider;
-use ethers::types::{Address, U256};
 use ethers::types::{Eip1559TransactionRequest, TransactionReceipt};
 use ethers::utils::hex;
-use ethers::utils::Ganache;
 use log::info;
-use std::convert::TryFrom;
 
 struct ExecutableTransaction<M: Middleware> {
     transaction_request: Eip1559TransactionRequest,
