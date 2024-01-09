@@ -10,7 +10,13 @@ homepage = "https://github.com/rainlanguage/rain.interpreter"
 
 [dependencies]
 ethers = { version = "2.0", features = ["legacy"] }
+ethers-signers = { version = "2.0.8", features = ["ledger"] }
 alloy-primitives = {version = "0.5.4" , features = ["rand"]} 
+log = "0.4"
+anyhow = "1.0.70"
+
+[dev-dependencies]
+tokio = { version = "1.28.0", features = ["full"] }
 
 [lints.clippy]
 all= "warn"
