@@ -1,13 +1,13 @@
 mod request_shim;
 
-/// Converts [ethers::types::H160] to [alloy_primitives::Address]
-pub fn ethers_address_to_alloy(address: ethers::types::H160) -> alloy_primitives::Address {
+/// Converts [ethers::types::Address] to [alloy_primitives::Address]
+pub fn ethers_address_to_alloy(address: ethers::types::Address) -> alloy_primitives::Address {
     address.to_fixed_bytes().into()
 }
 
-/// Converts [alloy_primitives::Address] to [ethers::types::H160]
-pub fn alloy_address_to_ethers(address: alloy_primitives::Address) -> ethers::types::H160 {
-    address.into_array().into()
+/// Converts [alloy_primitives::Address] to [ethers::types::Address]
+pub fn alloy_address_to_ethers(address: alloy_primitives::Address) -> ethers::types::Address {
+    ethers::types::H160::from(address.into_array())
 }
 
 /// Converts [ethers::types::U256] to [alloy_primitives::U256]
@@ -21,6 +21,19 @@ pub fn ethers_u256_to_alloy(value: ethers::types::U256) -> alloy_primitives::U25
 pub fn alloy_u256_to_ethers(value: alloy_primitives::U256) -> ethers::types::U256 {
     let data = value.as_le_slice();
     ethers::types::U256::from_little_endian(data)
+}
+
+/// Converts [ethers::types::U64] to [alloy_primitives::U64]
+pub fn ethers_u64_to_alloy(value: ethers::types::U64) -> alloy_primitives::U64 {
+    let mut data = [0_u8; 8];
+    value.to_little_endian(&mut data);
+    alloy_primitives::U64::from_le_slice(&data)
+}
+
+/// Converts [alloy_primitives::U64] to [ethers::types::U64]
+pub fn alloy_u64_to_ethers(value: alloy_primitives::U64) -> ethers::types::U64 {
+    let data = value.as_le_slice();
+    ethers::types::U64::from_little_endian(data)
 }
 
 /// Converts [ethers::types::Bytes] to [alloy_primitives::Bytes]

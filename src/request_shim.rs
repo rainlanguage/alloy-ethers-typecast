@@ -1,6 +1,6 @@
-use alloy_primitives::{Address, U256, U64};
-use ethers::types::{Eip1559TransactionRequest, NameOrAddress, H160};
-
+use super::*;
+use alloy_primitives::{Address, Bytes, U256, U64};
+use ethers::types::Eip1559TransactionRequest;
 trait TransactionRequestShim {
     fn to_eip1559(&self) -> Eip1559TransactionRequest;
 }
@@ -22,7 +22,7 @@ pub struct AlloyTransactionRequest {
 
     /// The compiled code of a contract OR the first 4 bytes of the hash of the
     /// invoked method signature and encoded parameters. For details see Ethereum Contract ABI
-    pub data: Option<Vec<u8>>,
+    pub data: Option<Bytes>,
 
     /// Transaction nonce (None for next available nonce)
     pub nonce: Option<U256>,
@@ -56,63 +56,57 @@ impl AlloyTransactionRequest {
     // Builder pattern helpers
 
     /// Sets the `from` field in the transaction to the provided value
-    #[must_use]
     pub fn with_from<T: Into<Address>>(mut self, from: T) -> Self {
         self.from = Some(from.into());
         self
     }
 
     /// Sets the `to` field in the transaction to the provided value
-    #[must_use]
     pub fn with_to<T: Into<Address>>(mut self, to: T) -> Self {
         self.to = Some(to.into());
         self
     }
 
     /// Sets the `gas` field in the transaction to the provided value
-    #[must_use]
     pub fn with_gas<T: Into<U256>>(mut self, gas: T) -> Self {
         self.gas = Some(gas.into());
         self
     }
 
     /// Sets the `max_priority_fee_per_gas` field in the transaction to the provided value
-    #[must_use]
-    pub fn with_max_priority_fee_per_gas<T: Into<U256>>(mut self, max_priority_fee_per_gas: T) -> Self {
+    pub fn with_max_priority_fee_per_gas<T: Into<U256>>(
+        mut self,
+        max_priority_fee_per_gas: T,
+    ) -> Self {
         self.max_priority_fee_per_gas = Some(max_priority_fee_per_gas.into());
         self
     }
 
     /// Sets the `max_fee_per_gas` field in the transaction to the provided value
-    #[must_use]
     pub fn with_max_fee_per_gas<T: Into<U256>>(mut self, max_fee_per_gas: T) -> Self {
         self.max_fee_per_gas = Some(max_fee_per_gas.into());
         self
     }
 
     /// Sets the `value` field in the transaction to the provided value
-    #[must_use]
     pub fn with_value<T: Into<U256>>(mut self, value: T) -> Self {
         self.value = Some(value.into());
         self
     }
 
     /// Sets the `data` field in the transaction to the provided value
-    #[must_use]
-    pub fn with_data<T: Into<Vec<u8>>>(mut self, data: T) -> Self {
+    pub fn with_data<T: Into<Bytes>>(mut self, data: T) -> Self {
         self.data = Some(data.into());
         self
     }
 
     /// Sets the `nonce` field in the transaction to the provided value
-    #[must_use]
     pub fn with_nonce<T: Into<U256>>(mut self, nonce: T) -> Self {
         self.nonce = Some(nonce.into());
         self
     }
 
     /// Sets the `chain_id` field in the transaction to the provided value
-    #[must_use]
     pub fn with_chain_id<T: Into<U64>>(mut self, chain_id: T) -> Self {
         self.chain_id = Some(chain_id.into());
         self
@@ -122,32 +116,15 @@ impl AlloyTransactionRequest {
 impl TransactionRequestShim for AlloyTransactionRequest {
     fn to_eip1559(&self) -> Eip1559TransactionRequest {
         let mut tx = Eip1559TransactionRequest::new();
-        tx.to = self.to.map(|to| NameOrAddress::Address(H160(to.0 .0)));
-        tx.from = self.from.map(|from| H160(from.0 .0));
-        tx.gas = self
-            .gas
-            .map(|gas| ethers::types::U256::from_little_endian(gas.as_le_slice()));
-        tx.nonce = self
-            .nonce
-            .map(|nonce| ethers::types::U256::from_little_endian(nonce.as_le_slice()));
-        tx.max_priority_fee_per_gas =
-            self.max_priority_fee_per_gas
-                .map(|max_priority_fee_per_gas| {
-                    ethers::types::U256::from_little_endian(max_priority_fee_per_gas.as_le_slice())
-                });
-        tx.max_fee_per_gas = self.max_fee_per_gas.map(|max_fee_per_gas| {
-            ethers::types::U256::from_little_endian(max_fee_per_gas.as_le_slice())
-        });
-        tx.value = self
-            .value
-            .map(|value| ethers::types::U256::from_little_endian(value.as_le_slice()));
-        tx.data = self
-            .data
-            .clone()
-            .map(|data| ethers::types::Bytes::from(data));
-        tx.chain_id = self
-            .chain_id
-            .map(|chain_id| ethers::types::U64::from_little_endian(chain_id.as_le_slice()));
+        tx.to = self.to.map(|address| ethers::types::NameOrAddress::from(alloy_address_to_ethers(address)));
+        tx.from = self.from.map(alloy_address_to_ethers);
+        tx.gas = self.gas.map(alloy_u256_to_ethers);
+        tx.nonce = self.nonce.map(alloy_u256_to_ethers);
+        tx.max_priority_fee_per_gas = self.max_priority_fee_per_gas.map(alloy_u256_to_ethers);
+        tx.max_fee_per_gas = self.max_fee_per_gas.map(alloy_u256_to_ethers);
+        tx.value = self.value.map(alloy_u256_to_ethers);
+        tx.data = self.data.clone().map(alloy_bytes_to_ethers);
+        tx.chain_id = self.chain_id.map(alloy_u64_to_ethers);
         tx
     }
 }
@@ -164,7 +141,7 @@ mod tests {
             from: Some(Address::repeat_byte(1)),
             gas: Some(U256::from(100000)),
             value: Some(U256::from(12345)),
-            data: Some(vec![1, 2, 3]),
+            data: Some(Bytes::from(vec![1, 2, 3])),
             nonce: Some(U256::from(0)),
             max_priority_fee_per_gas: Some(U256::from(100)),
             max_fee_per_gas: Some(U256::from(200)),
@@ -172,12 +149,12 @@ mod tests {
         };
 
         let expected = Eip1559TransactionRequest {
-            to: Some(NameOrAddress::Address(H160([2; 20]))),
-            from: Some(H160([1; 20])),
+            to: Some(ethers::types::NameOrAddress::Address(ethers::types::H160([2; 20]))),
+            from: Some(ethers::types::H160([1; 20])),
             gas: Some(ethers::types::U256::from(100000)),
             value: Some(ethers::types::U256::from(12345)),
             data: Some(ethers::types::Bytes::from(vec![1, 2, 3])),
-            nonce: Some(ethers::types::U256::from(0 )),
+            nonce: Some(ethers::types::U256::from(0)),
             max_priority_fee_per_gas: Some(ethers::types::U256::from(100)),
             access_list: AccessList::default(),
             max_fee_per_gas: Some(ethers::types::U256::from(200)),
@@ -204,7 +181,7 @@ mod tests {
         assert_eq!(request.to, Some(Address::repeat_byte(2)));
         assert_eq!(request.gas, Some(U256::from(100000)));
         assert_eq!(request.value, Some(U256::from(12345)));
-        assert_eq!(request.data, Some(vec![1, 2, 3]));
+        assert_eq!(request.data, Some(Bytes::from(vec![1, 2, 3])));
         assert_eq!(request.nonce, Some(U256::from(0)));
         assert_eq!(request.max_priority_fee_per_gas, Some(U256::from(100)));
         assert_eq!(request.max_fee_per_gas, Some(U256::from(200)));
