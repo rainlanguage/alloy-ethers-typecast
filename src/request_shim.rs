@@ -1,7 +1,7 @@
 use super::*;
 use alloy_primitives::{Address, Bytes, U256, U64};
 use ethers::types::Eip1559TransactionRequest;
-trait TransactionRequestShim {
+pub trait TransactionRequestShim {
     fn to_eip1559(&self) -> Eip1559TransactionRequest;
 }
 
