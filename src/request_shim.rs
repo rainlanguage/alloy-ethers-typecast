@@ -116,7 +116,9 @@ impl AlloyTransactionRequest {
 impl TransactionRequestShim for AlloyTransactionRequest {
     fn to_eip1559(&self) -> Eip1559TransactionRequest {
         let mut tx = Eip1559TransactionRequest::new();
-        tx.to = self.to.map(|address| ethers::types::NameOrAddress::from(alloy_address_to_ethers(address)));
+        tx.to = self
+            .to
+            .map(|address| ethers::types::NameOrAddress::from(alloy_address_to_ethers(address)));
         tx.from = self.from.map(alloy_address_to_ethers);
         tx.gas = self.gas.map(alloy_u256_to_ethers);
         tx.nonce = self.nonce.map(alloy_u256_to_ethers);
@@ -149,7 +151,9 @@ mod tests {
         };
 
         let expected = Eip1559TransactionRequest {
-            to: Some(ethers::types::NameOrAddress::Address(ethers::types::H160([2; 20]))),
+            to: Some(ethers::types::NameOrAddress::Address(ethers::types::H160(
+                [2; 20],
+            ))),
             from: Some(ethers::types::H160([1; 20])),
             gas: Some(ethers::types::U256::from(100000)),
             value: Some(ethers::types::U256::from(12345)),
