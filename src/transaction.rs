@@ -1,18 +1,20 @@
 use crate::request_shim::{AlloyTransactionRequest, TransactionRequestShim};
+use ethers::middleware::SignerMiddleware;
 use ethers::providers::Middleware;
+use ethers::signers::Signer;
 use ethers::types::{Eip1559TransactionRequest, TransactionReceipt};
 use ethers::utils::hex;
 use log::info;
 
-pub struct ExecutableTransaction<M: Middleware> {
+pub struct ExecutableTransaction<M: Middleware, S: Signer> {
     pub transaction_request: Eip1559TransactionRequest,
-    pub client: M,
+    pub client: SignerMiddleware<M, S>,
 }
 
-impl<M: Middleware> ExecutableTransaction<M> {
+impl<M: Middleware, S: Signer> ExecutableTransaction<M, S> {
     pub async fn from_alloy_transaction_request(
         transaction_request: AlloyTransactionRequest,
-        client: M,
+        client: SignerMiddleware<M, S>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
             transaction_request: transaction_request.to_eip1559(),
@@ -22,7 +24,7 @@ impl<M: Middleware> ExecutableTransaction<M> {
 
     pub async fn from_ethers_transaction_request(
         transaction_request: Eip1559TransactionRequest,
-        client: M,
+        client: SignerMiddleware<M, S>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
             transaction_request: transaction_request,
