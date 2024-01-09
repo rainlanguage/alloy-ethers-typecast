@@ -8,8 +8,8 @@ pub struct LedgerClientConfig {
     pub rpc_url: String,
 }
 
-struct LedgerClient {
-    client: SignerMiddleware<Provider<Http>, Ledger>,
+pub struct LedgerClient {
+    pub client: SignerMiddleware<Provider<Http>, Ledger>,
 }
 
 impl LedgerClient {

@@ -4,9 +4,9 @@ use ethers::types::{Eip1559TransactionRequest, TransactionReceipt};
 use ethers::utils::hex;
 use log::info;
 
-struct ExecutableTransaction<M: Middleware> {
-    transaction_request: Eip1559TransactionRequest,
-    client: M,
+pub struct ExecutableTransaction<M: Middleware> {
+    pub transaction_request: Eip1559TransactionRequest,
+    pub client: M,
 }
 
 impl<M: Middleware> ExecutableTransaction<M> {
