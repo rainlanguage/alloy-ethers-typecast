@@ -3,7 +3,7 @@ use ethers::prelude::{Http, Provider};
 use ethers_signers::{HDPath, Ledger};
 
 pub struct LedgerClient {
-    client: SignerMiddleware<Provider<Http>, Ledger>,
+    pub client: SignerMiddleware<Provider<Http>, Ledger>,
 }
 
 impl LedgerClient {
