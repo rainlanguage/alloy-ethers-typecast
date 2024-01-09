@@ -1,3 +1,5 @@
+mod request_shim;
+
 /// Converts [ethers::types::H160] to [alloy_primitives::Address]
 pub fn ethers_address_to_alloy(address: ethers::types::H160) -> alloy_primitives::Address {
     address.to_fixed_bytes().into()
