@@ -4,7 +4,7 @@ use ethers::providers::Middleware;
 use ethers::signers::Signer;
 use ethers::types::{Eip1559TransactionRequest, TransactionReceipt};
 use ethers::utils::hex;
-use log::info;
+use tracing::info;
 
 pub struct ExecutableTransaction<M: Middleware, S: Signer> {
     pub transaction_request: Eip1559TransactionRequest,

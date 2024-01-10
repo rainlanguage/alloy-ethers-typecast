@@ -55,8 +55,8 @@ dependencies = [
  "anyhow",
  "ethers",
  "ethers-signers",
- "log",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
