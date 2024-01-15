@@ -121,7 +121,6 @@ impl<P: JsonRpcClient> ReadTransaction<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy_primitives::Bytes;
     use alloy_sol_types::sol;
 
     sol! {
@@ -137,16 +136,14 @@ mod tests {
     async fn test_read_to_alloy_bytes_typed() -> anyhow::Result<()> {
         // Create a mock Provider
         let mock_provider = MockProvider::new();
-        let provider = Provider::new(mock_provider);
+        let client = Provider::new(mock_provider);
 
         // Create a mock transaction request
         let transaction_request = Eip1559TransactionRequest::default();
 
         // Create a ReadTransaction instance with the mock transaction request and provider
-        let read_transaction = ReadTransaction {
-            transaction_request,
-            client: provider.clone(),
-        };
+        let read_transaction =
+            ReadTransaction::from_ethers_transaction_request(transaction_request, client).await?;
 
         // Call the read_to_alloy_bytes_typed method
         let result = read_transaction
