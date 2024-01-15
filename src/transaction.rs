@@ -27,7 +27,7 @@ impl<M: Middleware, S: Signer> ExecutableTransaction<M, S> {
         client: SignerMiddleware<M, S>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
-            transaction_request: transaction_request,
+            transaction_request,
             client,
         })
     }
