@@ -2,7 +2,7 @@ use crate::ethers_bytes_to_alloy;
 use crate::request_shim::{AlloyTransactionRequest, TransactionRequestShim};
 use alloy_sol_types::SolCall;
 use ethers::middleware::SignerMiddleware;
-use ethers::providers::{Http, JsonRpcClient, Middleware, MockProvider, Provider};
+use ethers::providers::{JsonRpcClient, Middleware, Provider, ProviderError};
 use ethers::signers::Signer;
 use ethers::types::transaction::eip2718::TypedTransaction;
 use ethers::types::{Bytes, Eip1559TransactionRequest, TransactionReceipt};
@@ -95,7 +95,12 @@ impl<P: JsonRpcClient> ReadTransaction<P> {
                 None,
             )
             .await
-            .map_err(|err| anyhow::anyhow!("{}", err))?;
+            .map_err(|err| match err {
+                ProviderError::JsonRpcClientError(err) => {
+                    anyhow::anyhow!("{}", err)
+                }
+                _ => anyhow::anyhow!("{}", err),
+            })?;
         Ok(res)
     }
 
@@ -121,7 +126,10 @@ impl<P: JsonRpcClient> ReadTransaction<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloy_primitives::{Address, U256};
     use alloy_sol_types::sol;
+    use ethers::providers::{MockProvider, MockResponse};
+    use serde_json::json;
 
     sol! {
        function foo(uint256 a, uint256 b) external view returns (Foo);
@@ -136,6 +144,18 @@ mod tests {
     async fn test_read_to_alloy_bytes_typed() -> anyhow::Result<()> {
         // Create a mock Provider
         let mock_provider = MockProvider::new();
+
+        let bytes_string = "0x000000000000000000000000000000000000000000000000000000000000002a0000000000000000000000001111111111111111111111111111111111111111";
+
+        // Create a mock response
+        let foo_response = json!(bytes_string);
+
+        let mock_response = MockResponse::Value(foo_response);
+        mock_provider.push_response(mock_response.clone());
+        mock_provider.push_response(mock_response.clone());
+        mock_provider.push_response(mock_response);
+
+        // Create a Provider instance with the mock provider
         let client = Provider::new(mock_provider);
 
         // Create a mock transaction request
@@ -145,13 +165,32 @@ mod tests {
         let read_transaction =
             ReadTransaction::from_ethers_transaction_request(transaction_request, client).await?;
 
+        // Call the read_to_ethers_bytes method
+        let ethers_bytes = read_transaction.read_to_ethers_bytes().await?;
+
+        assert_eq!(
+            ethers_bytes,
+            ethers::types::Bytes::from(hex::decode(bytes_string).unwrap())
+        );
+
+        // Call the read_to_alloy_bytes method
+        let alloy_bytes = read_transaction.read_to_alloy_bytes().await?;
+
+        assert_eq!(
+            alloy_bytes,
+            alloy_primitives::Bytes::from(hex::decode(bytes_string).unwrap())
+        );
+
         // Call the read_to_alloy_bytes_typed method
         let result = read_transaction
             .read_to_alloy_bytes_typed::<fooCall>()
             .await?;
 
-        let bar = result.bar;
-        let baz = result.baz;
+        let bar = result._0.bar;
+        let baz = result._0.baz;
+
+        assert_eq!(bar, U256::from(42));
+        assert_eq!(baz, Address::repeat_byte(0x11));
 
         Ok(())
     }
