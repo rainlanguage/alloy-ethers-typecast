@@ -56,59 +56,59 @@ impl AlloyTransactionRequest {
     // Builder pattern helpers
 
     /// Sets the `from` field in the transaction to the provided value
-    pub fn with_from<T: Into<Address>>(mut self, from: T) -> Self {
-        self.from = Some(from.into());
+    pub fn with_from<T: Into<Address>>(mut self, from: Option<T>) -> Self {
+        self.from = from.map(|val| val.into());
         self
     }
 
     /// Sets the `to` field in the transaction to the provided value
-    pub fn with_to<T: Into<Address>>(mut self, to: T) -> Self {
-        self.to = Some(to.into());
+    pub fn with_to<T: Into<Address>>(mut self, to: Option<T>) -> Self {
+        self.to = to.map(|val| val.into());
         self
     }
 
     /// Sets the `gas` field in the transaction to the provided value
-    pub fn with_gas<T: Into<U256>>(mut self, gas: T) -> Self {
-        self.gas = Some(gas.into());
+    pub fn with_gas<T: Into<U256>>(mut self, gas: Option<T>) -> Self {
+        self.gas = gas.map(|val| val.into());
         self
     }
 
     /// Sets the `max_priority_fee_per_gas` field in the transaction to the provided value
     pub fn with_max_priority_fee_per_gas<T: Into<U256>>(
         mut self,
-        max_priority_fee_per_gas: T,
+        max_priority_fee_per_gas: Option<T>,
     ) -> Self {
-        self.max_priority_fee_per_gas = Some(max_priority_fee_per_gas.into());
+        self.max_priority_fee_per_gas = max_priority_fee_per_gas.map(|val| val.into());
         self
     }
 
     /// Sets the `max_fee_per_gas` field in the transaction to the provided value
-    pub fn with_max_fee_per_gas<T: Into<U256>>(mut self, max_fee_per_gas: T) -> Self {
-        self.max_fee_per_gas = Some(max_fee_per_gas.into());
+    pub fn with_max_fee_per_gas<T: Into<U256>>(mut self, max_fee_per_gas: Option<T>) -> Self {
+        self.max_fee_per_gas = max_fee_per_gas.map(|val| val.into());
         self
     }
 
     /// Sets the `value` field in the transaction to the provided value
-    pub fn with_value<T: Into<U256>>(mut self, value: T) -> Self {
-        self.value = Some(value.into());
+    pub fn with_value<T: Into<U256>>(mut self, value: Option<T>) -> Self {
+        self.value = value.map(|val| val.into());
         self
     }
 
     /// Sets the `data` field in the transaction to the provided value
-    pub fn with_data<T: Into<Bytes>>(mut self, data: T) -> Self {
-        self.data = Some(data.into());
+    pub fn with_data<T: Into<Bytes>>(mut self, data: Option<T>) -> Self {
+        self.data = data.map(|val| val.into());
         self
     }
 
     /// Sets the `nonce` field in the transaction to the provided value
-    pub fn with_nonce<T: Into<U256>>(mut self, nonce: T) -> Self {
-        self.nonce = Some(nonce.into());
+    pub fn with_nonce<T: Into<U256>>(mut self, nonce: Option<T>) -> Self {
+        self.nonce = nonce.map(|val| val.into());
         self
     }
 
     /// Sets the `chain_id` field in the transaction to the provided value
-    pub fn with_chain_id<T: Into<U64>>(mut self, chain_id: T) -> Self {
-        self.chain_id = Some(chain_id.into());
+    pub fn with_chain_id<T: Into<U64>>(mut self, chain_id: Option<T>) -> Self {
+        self.chain_id = chain_id.map(|val| val.into());
         self
     }
 }
@@ -171,15 +171,15 @@ mod tests {
     #[test]
     fn test_builder_functions() {
         let request = AlloyTransactionRequest::default()
-            .with_from(Address::repeat_byte(1))
-            .with_to(Address::repeat_byte(2))
-            .with_gas(U256::from(100000))
-            .with_value(U256::from(12345))
-            .with_data(vec![1, 2, 3])
-            .with_nonce(U256::from(0))
-            .with_max_priority_fee_per_gas(U256::from(100))
-            .with_max_fee_per_gas(U256::from(200))
-            .with_chain_id(U64::from(1));
+            .with_from(Some(Address::repeat_byte(1)))
+            .with_to(Some(Address::repeat_byte(2)))
+            .with_gas(Some(U256::from(100000)))
+            .with_value(Some(U256::from(12345)))
+            .with_data(Some(vec![1, 2, 3]))
+            .with_nonce(Some(U256::from(0)))
+            .with_max_priority_fee_per_gas(Some(U256::from(100)))
+            .with_max_fee_per_gas(Some(U256::from(200)))
+            .with_chain_id(Some(U64::from(1)));
 
         assert_eq!(request.from, Some(Address::repeat_byte(1)));
         assert_eq!(request.to, Some(Address::repeat_byte(2)));
