@@ -2,7 +2,7 @@ use crate::ethers_bytes_to_alloy;
 use crate::request_shim::{AlloyTransactionRequest, TransactionRequestShim};
 use alloy_sol_types::SolCall;
 use ethers::middleware::SignerMiddleware;
-use ethers::providers::{Http, Middleware, Provider};
+use ethers::providers::{Http, JsonRpcClient, Middleware, MockProvider, Provider};
 use ethers::signers::Signer;
 use ethers::types::transaction::eip2718::TypedTransaction;
 use ethers::types::{Bytes, Eip1559TransactionRequest, TransactionReceipt};
@@ -61,15 +61,15 @@ impl<M: Middleware, S: Signer> WriteTransaction<M, S> {
     }
 }
 
-pub struct ReadTransaction {
+pub struct ReadTransaction<P: JsonRpcClient> {
     pub transaction_request: Eip1559TransactionRequest,
-    pub client: Provider<Http>,
+    pub client: Provider<P>,
 }
 
-impl ReadTransaction {
+impl<P: JsonRpcClient> ReadTransaction<P> {
     pub async fn from_alloy_transaction_request(
         transaction_request: AlloyTransactionRequest,
-        client: Provider<Http>,
+        client: Provider<P>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
             transaction_request: transaction_request.to_eip1559(),
@@ -79,7 +79,7 @@ impl ReadTransaction {
 
     pub async fn from_ethers_transaction_request(
         transaction_request: Eip1559TransactionRequest,
-        client: Provider<Http>,
+        client: Provider<P>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
             transaction_request: transaction_request,
@@ -115,5 +115,47 @@ impl ReadTransaction {
         let bytes = self.read().await?;
         let t = T::abi_decode_returns(bytes.to_vec().as_slice(), true)?;
         Ok(t)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy_primitives::Bytes;
+    use alloy_sol_types::sol;
+
+    sol! {
+       function foo(uint256 a, uint256 b) external view returns (Foo);
+
+        struct Foo {
+            uint256 bar;
+            address baz;
+        }
+    }
+
+    #[tokio::test]
+    async fn test_read_to_alloy_bytes_typed() -> anyhow::Result<()> {
+        // Create a mock Provider
+        let mock_provider = MockProvider::new();
+        let provider = Provider::new(mock_provider);
+
+        // Create a mock transaction request
+        let transaction_request = Eip1559TransactionRequest::default();
+
+        // Create a ReadTransaction instance with the mock transaction request and provider
+        let read_transaction = ReadTransaction {
+            transaction_request,
+            client: provider.clone(),
+        };
+
+        // Call the read_to_alloy_bytes_typed method
+        let result = read_transaction
+            .read_to_alloy_bytes_typed::<fooCall>()
+            .await?;
+
+        let bar = result.bar;
+        let baz = result.baz;
+
+        Ok(())
     }
 }
