@@ -52,6 +52,7 @@ name = "alloy-ethers-typecast"
 version = "0.2.0"
 dependencies = [
  "alloy-primitives",
+ "alloy-sol-types",
  "anyhow",
  "ethers",
  "ethers-signers",
@@ -89,6 +90,36 @@ checksum = "8d58d9f5da7b40e9bfff0b7e7816700be4019db97d4b6359fe7f94a9e22e42ac"
 dependencies = [
  "arrayvec",
  "bytes",
+]
+
+[[package]]
+name = "alloy-sol-macro"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "970e5cf1ca089e964d4f7f7afc7c9ad642bfb1bdc695a20b0cba3b3c28954774"
+dependencies = [
+ "const-hex",
+ "dunce",
+ "heck",
+ "indexmap",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.43",
+ "syn-solidity",
+ "tiny-keccak",
+]
+
+[[package]]
+name = "alloy-sol-types"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2a059d4d2c78f8f21e470772c75f9abd9ac6d48c2aaf6b278d1ead06ed9ac664"
+dependencies = [
+ "alloy-primitives",
+ "alloy-sol-macro",
+ "const-hex",
+ "serde",
 ]
 
 [[package]]
@@ -3278,6 +3309,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "syn-solidity"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91ede2e5b2c6bfac4bc0ff4499957a11725dc12a7ddb86270e827ef575892553"
+dependencies = [
+ "paste",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.43",
 ]
 
 [[package]]
