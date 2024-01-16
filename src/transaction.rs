@@ -2,6 +2,7 @@ use crate::alloy_u64_to_ethers;
 use crate::request_shim::{AlloyTransactionRequest, TransactionRequestShim};
 use alloy_primitives::{Address, U256, U64};
 use alloy_sol_types::SolCall;
+use derive_builder::Builder;
 use ethers::middleware::SignerMiddleware;
 use ethers::providers::{JsonRpcClient, Middleware, Provider, ProviderError};
 use ethers::signers::Signer;
@@ -10,97 +11,35 @@ use ethers::types::TransactionReceipt;
 use ethers::utils::hex;
 use tracing::info;
 
-pub struct WriteContractParameters<C: SolCall> {
+#[derive(Builder)]
+pub struct WriteContractParameters<C: SolCall + Default> {
     pub call: Option<C>,
     pub address: Option<Address>,
+    #[builder(setter(into, strip_option))]
     pub gas: Option<U256>,
+    #[builder(setter(into, strip_option))]
     pub gas_price: Option<U256>,
+    #[builder(setter(into, strip_option))]
     pub max_fee_per_gas: Option<U256>,
+    #[builder(setter(into, strip_option))]
     pub max_priority_fee_per_gas: Option<U256>,
+    #[builder(setter(into, strip_option))]
     pub nonce: Option<U256>,
+    #[builder(setter(into, strip_option))]
     pub value: Option<U256>,
 }
 
-impl<C: SolCall> WriteContractParameters<C> {
-    pub fn default() -> Self {
-        Self {
-            call: None,
-            address: None,
-            gas: None,
-            gas_price: None,
-            max_fee_per_gas: None,
-            max_priority_fee_per_gas: None,
-            nonce: None,
-            value: None,
-        }
-    }
+pub struct WritableClient<M: Middleware, S: Signer>(SignerMiddleware<M, S>);
 
-    /// Sets the `call` field in the transaction to the provided value
-    /// The call must implement the `SolCall` trait
-    pub fn with_call(mut self, call: C) -> Self {
-        self.call = Some(call);
-        self
-    }
-
-    /// Sets the `address` field in the transaction to the provided value
-    pub fn with_address<T: Into<Address>>(mut self, address: T) -> Self {
-        self.address = Some(address.into());
-        self
-    }
-
-    /// Sets the `gas` field in the transaction to the provided value
-    pub fn with_gas<T: Into<U256>>(mut self, gas: Option<T>) -> Self {
-        self.gas = gas.map(|val| val.into());
-        self
-    }
-
-    /// Sets the `gas_price` field in the transaction to the provided value
-    pub fn with_gas_price<T: Into<U256>>(mut self, gas_price: Option<T>) -> Self {
-        self.gas_price = gas_price.map(|val| val.into());
-        self
-    }
-
-    /// Sets the `max_priority_fee_per_gas` field in the transaction to the provided value
-    pub fn with_max_priority_fee_per_gas<T: Into<U256>>(
-        mut self,
-        max_priority_fee_per_gas: Option<T>,
-    ) -> Self {
-        self.max_priority_fee_per_gas = max_priority_fee_per_gas.map(|val| val.into());
-        self
-    }
-
-    /// Sets the `max_fee_per_gas` field in the transaction to the provided value
-    pub fn with_max_fee_per_gas<T: Into<U256>>(mut self, max_fee_per_gas: Option<T>) -> Self {
-        self.max_fee_per_gas = max_fee_per_gas.map(|val| val.into());
-        self
-    }
-
-    /// Sets the `nonce` field in the transaction to the provided value
-    pub fn with_nonce<T: Into<U256>>(mut self, nonce: Option<T>) -> Self {
-        self.nonce = nonce.map(|val| val.into());
-        self
-    }
-
-    /// Sets the `value` field in the transaction to the provided value
-    pub fn with_value<T: Into<U256>>(mut self, value: Option<T>) -> Self {
-        self.value = value.map(|val| val.into());
-        self
-    }
-}
-
-pub struct WriteContract<M: Middleware, S: Signer> {
-    pub client: SignerMiddleware<M, S>,
-}
-
-impl<M: Middleware, S: Signer> WriteContract<M, S> {
+impl<M: Middleware, S: Signer> WritableClient<M, S> {
     // Create a new WriteContract instance, passing a client
     pub fn new(client: SignerMiddleware<M, S>) -> Self {
-        Self { client }
+        Self(client)
     }
 
     // Executes a write function on a contract.
-    pub async fn write<C: SolCall>(
-        &self,
+    pub async fn write<C: SolCall + Default>(
+        self,
         parameters: WriteContractParameters<C>,
     ) -> anyhow::Result<TransactionReceipt> {
         let data = parameters
@@ -120,7 +59,7 @@ impl<M: Middleware, S: Signer> WriteContract<M, S> {
         let ethers_transaction_request = transaction_request.to_eip1559();
 
         let pending_tx = self
-            .client
+            .0
             .send_transaction(ethers_transaction_request, None)
             .await
             .map_err(|err| anyhow::anyhow!("{}", err))?;
@@ -143,72 +82,37 @@ impl<M: Middleware, S: Signer> WriteContract<M, S> {
     }
 }
 
-/// Parameters for sending a transaction
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Builder)]
 pub struct ReadContractParameters<C: SolCall> {
-    pub address: Option<Address>,
-    pub call: Option<C>,
+    pub address: Address,
+    pub call: C,
+    #[builder(setter(into, strip_option))]
     pub block_number: Option<U64>,
 }
 
-impl<C: SolCall> ReadContractParameters<C> {
-    pub fn default() -> Self {
-        Self {
-            address: None,
-            call: None,
-            block_number: None,
-        }
-    }
+pub struct ReadableClient<P: JsonRpcClient>(Provider<P>);
 
-    /// Sets the `call` field in the transaction to the provided value
-    /// The call must implement the `SolCall` trait
-    pub fn with_call(mut self, call: C) -> Self {
-        self.call = Some(call);
-        self
-    }
-
-    /// Sets the `address` field in the transaction to the provided value
-    pub fn with_address<T: Into<Address>>(mut self, address: T) -> Self {
-        self.address = Some(address.into());
-        self
-    }
-
-    /// Sets the `block_number` field in the transaction to the provided value
-    /// If no value is provided, the latest block number will be used
-    pub fn with_block_number<T: Into<U64>>(mut self, block_number: Option<T>) -> Self {
-        self.block_number = block_number.map(|val| val.into());
-        self
-    }
-}
-
-pub struct ReadContract<P: JsonRpcClient> {
-    pub client: Provider<P>,
-}
-
-impl<P: JsonRpcClient> ReadContract<P> {
+impl<P: JsonRpcClient> ReadableClient<P> {
     // Create a new ReadContract instance, passing a client
     pub fn new(client: Provider<P>) -> Self {
-        Self { client }
+        Self(client)
     }
 
     // Executes a read function on a contract.
     pub async fn read<C: SolCall>(
-        &self,
+        self,
         parameters: ReadContractParameters<C>,
     ) -> anyhow::Result<<C as SolCall>::Return> {
-        let data = parameters
-            .call
-            .ok_or(anyhow::anyhow!("No call provided"))?
-            .abi_encode();
+        let data = parameters.call.abi_encode();
 
         let transaction_request = AlloyTransactionRequest::new()
-            .with_to(parameters.address)
+            .with_to(Some(parameters.address))
             .with_data(Some(data));
 
         let ethers_transaction_request = transaction_request.to_eip1559();
 
         let res = self
-            .client
+            .0
             .call(
                 &TypedTransaction::Eip1559(ethers_transaction_request),
                 parameters.block_number.map(|val| {
@@ -266,17 +170,18 @@ mod tests {
         // Create a Provider instance with the mock provider
         let client = Provider::new(mock_provider);
 
-        // Create a ReadContract instance with the mock provider
-        let read_contract = ReadContract::new(client);
+        // Create a ReadableClient instance with the mock provider
+        let read_contract = ReadableClient::new(client);
 
         // Create a ReadContractParameters instance
-        let parameters = ReadContractParameters::<fooCall>::default()
-            .with_call(fooCall {
+        let parameters = ReadContractParametersBuilder::default()
+            .call(fooCall {
                 a: U256::from(42), // these could be anything, the mock provider doesn't care
                 b: U256::from(10),
             })
-            .with_address(Address::repeat_byte(0x22))
-            .with_block_number(Some(U64::from(123)));
+            .address(Address::repeat_byte(0x22))
+            .block_number(U64::from(123))
+            .build()?;
 
         // Call the read method
         let result = read_contract.read(parameters).await?;
