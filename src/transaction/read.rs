@@ -10,7 +10,7 @@ use ethers::types::transaction::eip2718::TypedTransaction;
 pub struct ReadContractParameters<C: SolCall> {
     pub address: Address,
     pub call: C,
-    #[builder(setter(into, strip_option))]
+    #[builder(setter(into, strip_option), default)]
     pub block_number: Option<U64>,
 }
 
@@ -33,12 +33,10 @@ impl<P: JsonRpcClient> ReadableClient<P> {
             .with_to(Some(parameters.address))
             .with_data(Some(data));
 
-        let ethers_transaction_request = transaction_request.to_eip1559();
-
         let res = self
             .0
             .call(
-                &TypedTransaction::Eip1559(ethers_transaction_request),
+                &TypedTransaction::Eip1559(transaction_request.to_eip1559()),
                 parameters.block_number.map(|val| {
                     ethers::types::BlockId::Number(ethers::types::BlockNumber::Number(
                         alloy_u64_to_ethers(val),
@@ -46,12 +44,7 @@ impl<P: JsonRpcClient> ReadableClient<P> {
                 }),
             )
             .await
-            .map_err(|err| match err {
-                ProviderError::JsonRpcClientError(err) => {
-                    anyhow::anyhow!("{}", err)
-                }
-                _ => anyhow::anyhow!("{}", err),
-            })?;
+            .map_err(|err| anyhow::anyhow!("{}", err))?;
 
         let return_typed = C::abi_decode_returns(res.to_vec().as_slice(), true)?;
 
@@ -66,6 +59,38 @@ mod tests {
     use alloy_sol_types::sol;
     use ethers::providers::{MockProvider, MockResponse};
     use serde_json::json;
+
+    #[tokio::test]
+    async fn test_builder() -> anyhow::Result<()> {
+        // block_number is optional so this should work
+        let parameters = ReadContractParametersBuilder::default()
+            .address(Address::repeat_byte(0x11))
+            .call(fooCall {
+                a: U256::from(42),
+                b: U256::from(10),
+            })
+            .build()?;
+
+        assert_eq!(parameters.address, Address::repeat_byte(0x11));
+        assert_eq!(parameters.call.a, U256::from(42));
+        assert_eq!(parameters.call.b, U256::from(10));
+
+        // but we can also set block number without needing Some(block_number)
+        let parameters = ReadContractParametersBuilder::default()
+            .address(Address::repeat_byte(0x11))
+            .call(fooCall {
+                a: U256::from(42),
+                b: U256::from(10),
+            })
+            .block_number(U64::from(1))
+            .build()?;
+
+        assert_eq!(parameters.address, Address::repeat_byte(0x11));
+        assert_eq!(parameters.call.a, U256::from(42));
+        assert_eq!(parameters.call.b, U256::from(10));
+
+        Ok(())
+    }
 
     sol! {
        function foo(uint256 a, uint256 b) external view returns (Foo);
@@ -104,7 +129,6 @@ mod tests {
                 b: U256::from(10),
             })
             .address(Address::repeat_byte(0x22))
-            .block_number(U64::from(123))
             .build()?;
 
         // Call the read method
