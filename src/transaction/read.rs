@@ -3,7 +3,7 @@ use crate::request_shim::{AlloyTransactionRequest, TransactionRequestShim};
 use alloy_primitives::{Address, U64};
 use alloy_sol_types::SolCall;
 use derive_builder::Builder;
-use ethers::providers::{JsonRpcClient, Middleware, Provider, ProviderError};
+use ethers::providers::{JsonRpcClient, Middleware, Provider};
 use ethers::types::transaction::eip2718::TypedTransaction;
 
 #[derive(Builder)]
@@ -60,6 +60,15 @@ mod tests {
     use ethers::providers::{MockProvider, MockResponse};
     use serde_json::json;
 
+    sol! {
+       function foo(uint256 a, uint256 b) external view returns (Foo);
+
+        struct Foo {
+            uint256 bar;
+            address baz;
+        }
+    }
+
     #[tokio::test]
     async fn test_builder() -> anyhow::Result<()> {
         // block_number is optional so this should work
@@ -90,15 +99,6 @@ mod tests {
         assert_eq!(parameters.call.b, U256::from(10));
 
         Ok(())
-    }
-
-    sol! {
-       function foo(uint256 a, uint256 b) external view returns (Foo);
-
-        struct Foo {
-            uint256 bar;
-            address baz;
-        }
     }
 
     #[tokio::test]
