@@ -3,7 +3,7 @@ use crate::request_shim::{AlloyTransactionRequest, TransactionRequestShim};
 use alloy_primitives::{Address, U64};
 use alloy_sol_types::SolCall;
 use derive_builder::Builder;
-use ethers::providers::{JsonRpcClient, Middleware, Provider};
+use ethers::providers::{Http, JsonRpcClient, Middleware, Provider};
 use ethers::types::transaction::eip2718::TypedTransaction;
 
 #[derive(Builder)]
@@ -16,8 +16,16 @@ pub struct ReadContractParameters<C: SolCall> {
 
 pub struct ReadableClient<P: JsonRpcClient>(Provider<P>);
 
+impl ReadableClient<Http> {
+    pub fn new_from_url(url: String) -> anyhow::Result<Self> {
+        let provider =
+            Provider::<Http>::try_from(url).expect("could not instantiate HTTP Provider");
+        Ok(Self(provider))
+    }
+}
+
 impl<P: JsonRpcClient> ReadableClient<P> {
-    // Create a new ReadContract instance, passing a client
+    // Create a new ReadableClient instance, passing a client
     pub fn new(client: Provider<P>) -> Self {
         Self(client)
     }
