@@ -14,6 +14,7 @@ pub struct ReadContractParameters<C: SolCall> {
     pub block_number: Option<U64>,
 }
 
+#[derive(Clone)]
 pub struct ReadableClient<P: JsonRpcClient>(Provider<P>);
 
 pub type ReadableClientHttp = ReadableClient<Http>;
@@ -34,7 +35,7 @@ impl<P: JsonRpcClient> ReadableClient<P> {
 
     // Executes a read function on a contract.
     pub async fn read<C: SolCall>(
-        self,
+        &self,
         parameters: ReadContractParameters<C>,
     ) -> anyhow::Result<<C as SolCall>::Return> {
         let data = parameters.call.abi_encode();

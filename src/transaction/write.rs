@@ -26,7 +26,7 @@ pub struct WriteContractParameters<C: SolCall> {
     #[builder(setter(into, strip_option), default)]
     pub value: Option<U256>,
 }
-
+#[derive(Clone)]
 pub struct WritableClient<M: Middleware, S: Signer>(SignerMiddleware<M, S>);
 
 impl<M: Middleware, S: Signer> WritableClient<M, S> {
@@ -37,7 +37,7 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
 
     // Executes a write function on a contract.
     pub async fn write<C: SolCall>(
-        self,
+        &self,
         parameters: WriteContractParameters<C>,
     ) -> anyhow::Result<TransactionReceipt> {
         let transaction_request = AlloyTransactionRequest::new()
