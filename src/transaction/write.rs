@@ -40,28 +40,9 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
         &self,
         parameters: WriteContractParameters<C>,
     ) -> anyhow::Result<TransactionReceipt> {
-        let transaction_request = AlloyTransactionRequest::new()
-            .with_to(Some(parameters.address))
-            .with_data(Some(parameters.call.abi_encode()))
-            .with_gas(parameters.gas)
-            .with_max_fee_per_gas(parameters.max_fee_per_gas)
-            .with_max_priority_fee_per_gas(parameters.max_priority_fee_per_gas)
-            .with_nonce(parameters.nonce)
-            .with_value(parameters.value);
+        let pending_tx = self.write_pending(parameters).await?;
 
-        let ethers_transaction_request = transaction_request.to_eip1559();
-
-        println!("about to send transaction");
-        let pending_tx = self
-            .0
-            .send_transaction(ethers_transaction_request, None)
-            .await
-            .map_err(|err| anyhow::anyhow!("{}", err))?;
-
-        // panic!("sent transaction");
         info!("Transaction submitted. Awaiting block confirmations...");
-
-        // panic!("{:?}", pending_tx);
 
         let tx_confirmation = pending_tx.confirmations(0).await?;
 
@@ -76,6 +57,31 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
             hex::encode(tx_receipt.transaction_hash.as_bytes())
         );
         Ok(tx_receipt)
+    }
+
+    // Executes a write function but returns a PendingTransaction instance
+    pub async fn write_pending<C: SolCall>(
+        &self,
+        parameters: WriteContractParameters<C>,
+    ) -> anyhow::Result<ethers::providers::PendingTransaction<'_, M::Provider>> {
+        let transaction_request = AlloyTransactionRequest::new()
+            .with_to(Some(parameters.address))
+            .with_data(Some(parameters.call.abi_encode()))
+            .with_gas(parameters.gas)
+            .with_max_fee_per_gas(parameters.max_fee_per_gas)
+            .with_max_priority_fee_per_gas(parameters.max_priority_fee_per_gas)
+            .with_nonce(parameters.nonce)
+            .with_value(parameters.value);
+
+        let ethers_transaction_request = transaction_request.to_eip1559();
+
+        let pending_tx = self
+            .0
+            .send_transaction(ethers_transaction_request, None)
+            .await
+            .map_err(|err| anyhow::anyhow!("{}", err))?;
+
+        Ok(pending_tx)
     }
 }
 
