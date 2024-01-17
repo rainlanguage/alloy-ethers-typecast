@@ -16,6 +16,8 @@ pub struct ReadContractParameters<C: SolCall> {
 
 pub struct ReadableClient<P: JsonRpcClient>(Provider<P>);
 
+pub type ReadableClientHttp = ReadableClient<Http>;
+
 impl ReadableClient<Http> {
     pub fn new_from_url(url: String) -> anyhow::Result<Self> {
         let provider =
