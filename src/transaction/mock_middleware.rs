@@ -1,7 +1,6 @@
 use std::fmt::{self, Debug};
 
 use async_trait::async_trait;
-use ethers::abi::AbiEncode;
 use ethers::providers::{JsonRpcClient, ProviderError};
 use ethers::types::transaction::eip2718::TypedTransaction;
 use ethers::utils::rlp;
@@ -218,23 +217,13 @@ impl JsonRpcClient for MockJsonRpcClient {
                     ProviderError::CustomError("Failed to deserialize params".into())
                 })?;
 
-                let value = json!({
-                    "hash": hash.encode_hex(),
-                    "nonce": "0x00",
-                    "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-                    "blockNumber": "0x00",
-                    "transactionIndex":  "0x00",
-                    "from": "0x0000000000000000000000000000000000000000",
-                    "to": "0x0000000000000000000000000000000000000000",
-                    "value": "0x00",
-                    "gasPrice": "0x00",
-                    "gas": "0x00",
-                    "input": "0x",
-                    "v": "0x00",
-                    "r": "0x0000000000000000000000000000000000000000000000000000000000000000",
-                    "s": "0x0000000000000000000000000000000000000000000000000000000000000000"
-                });
-                let response: R = serde_json::from_value(value).map_err(|err| {
+                let transaction = Transaction {
+                    block_number: Some(1.into()), // we need a block number for PendingTransaction to consider this mined
+                    hash,
+                    ..Default::default()
+                };
+
+                let response: R = serde_json::from_value(json!(transaction)).map_err(|err| {
                     debug!("Error: {:?}", err);
                     ProviderError::CustomError("Failed to deserialize response".into())
                 })?;
@@ -247,34 +236,13 @@ impl JsonRpcClient for MockJsonRpcClient {
                     debug!("Error: {:?}", err);
                     ProviderError::CustomError("Failed to deserialize params".into())
                 })?;
-                let value = json!({
-                  "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-                  "blockNumber":  "0x00",
-                  "contractAddress": null,
-                  "cumulativeGasUsed": "0x00",
-                  "from": "0x0000000000000000000000000000000000000000",
-                  "gasUsed": "0x00",
-                  "logsBloom": format!("{:0512x}", 1),
-                  "logs": [
-                    {
-                      "address": "0x0000000000000000000000000000000000000000",
-                      "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-                      "blockNumber": "0x00",
-                      "data": "0x00",
-                      "logIndex": "0x00",
-                      "topics": [
-                        "0x0000000000000000000000000000000000000000000000000000000000000000"
-                      ],
-                      "transactionHash": hash.encode_hex(),
-                      "transactionIndex": format!("0x{:x}", 665)
-                    }
-                  ],
-                  "root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-                  "to": "0x0000000000000000000000000000000000000000",
-                  "transactionHash": hash.encode_hex(),
-                  "transactionIndex": format!("0x{:x}", 665)
-                });
-                let response: R = serde_json::from_value(value).map_err(|err| {
+
+                let receipt = TransactionReceipt {
+                    transaction_hash: hash,
+                    ..Default::default()
+                };
+
+                let response: R = serde_json::from_value(json!(receipt)).map_err(|err| {
                     debug!("Error: {:?}", err);
                     ProviderError::CustomError("Failed to deserialize response".into())
                 })?;
