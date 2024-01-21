@@ -12,8 +12,12 @@ use tracing::info;
 
 #[derive(Error, Debug)]
 pub enum WritableClientError {
-    #[error("failed to execute write function on contract: {0}")]
-    WriteError(String),
+    #[error("failed to send transaction: {0}")]
+    WriteSendTxError(String),
+    #[error("failed to confirm transaction: {0}")]
+    WriteConfirmationError(String),
+    #[error("transaction failed")]
+    WriteFailedTxError(),
 }
 
 #[derive(Builder)]
@@ -51,11 +55,14 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
 
         info!("Transaction submitted. Awaiting block confirmations...");
 
-        let tx_confirmation = pending_tx.confirmations(4).await?;
+        let tx_confirmation = pending_tx
+            .confirmations(4)
+            .await
+            .map_err(|err| WritableClientError::WriteConfirmationError(err.to_string()))?;
 
         let tx_receipt = match tx_confirmation {
             Some(receipt) => receipt,
-            None => return Err(WritableClientError::WriteError("Transaction failed".into())),
+            None => return Err(WritableClientError::WriteFailedTxError()),
         };
 
         info!("Transaction Confirmed");
@@ -86,7 +93,7 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
             .0
             .send_transaction(ethers_transaction_request, None)
             .await
-            .map_err(|err| WritableClientError::WriteError(format!("{}", err)))?;
+            .map_err(|err| WritableClientError::WriteSendTxError(err.to_string()))?;
 
         Ok(pending_tx)
     }

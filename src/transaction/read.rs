@@ -9,10 +9,12 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ReadableClientError {
-    #[error("Failed to instantiate provider: {0}")]
-    CreateReadableClientError(String),
-    #[error("failed to execute read function on contract: {0}")]
-    ReadError(String),
+    #[error("failed to instantiate provider: {0}")]
+    CreateReadableClientHttpError(String),
+    #[error("failed to read call: {0}")]
+    ReadCallError(String),
+    #[error("failed to decode return: {0}")]
+    ReadDecodeReturnError(String),
 }
 
 #[derive(Builder)]
@@ -31,7 +33,7 @@ pub type ReadableClientHttp = ReadableClient<Http>;
 impl ReadableClient<Http> {
     pub fn new_from_url(url: String) -> Result<Self, ReadableClientError> {
         let provider = Provider::<Http>::try_from(url)
-            .map_err(|err| ReadableClientError::CreateReadableClientError(format!("{}", err)))?;
+            .map_err(|err| ReadableClientError::CreateReadableClientHttpError(err.to_string()))?;
         Ok(Self(provider))
     }
 }
@@ -64,14 +66,10 @@ impl<P: JsonRpcClient> ReadableClient<P> {
                 }),
             )
             .await
-            .map_err(|err| ReadableClientError::ReadError(format!("{}", err)))?;
+            .map_err(|err| ReadableClientError::ReadCallError(err.to_string()))?;
 
-        let return_typed = C::abi_decode_returns(res.to_vec().as_slice(), true).map_err(|err| {
-            ReadableClientError::ReadError(format!(
-                "Failed to decode return value from read function: {}",
-                err
-            ))
-        })?;
+        let return_typed = C::abi_decode_returns(res.to_vec().as_slice(), true)
+            .map_err(|err| ReadableClientError::ReadDecodeReturnError(err.to_string()))?;
 
         Ok(return_typed)
     }
