@@ -4,14 +4,16 @@ version = "0.2.0"
 edition = "2021"
 description = "Crate for safe typecasting between ethers and alloy types"
 license = "CAL-1.0"
-homepage = "https://github.com/rainlanguage/rain.interpreter" 
+homepage = "https://github.com/rainlanguage/rain.interpreter"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ethers = { version = "2.0", features = ["legacy"] }
-ethers-signers = { version = "2.0.8", features = ["ledger"] }
-alloy-primitives = {version = "0.5.4" , features = ["rand"]}
+ethers = { git = "https://github.com/gakonst/ethers-rs.git", rev = "88095ba47eb6a3507f0db1767353b387b27a6e98", features = [
+  "legacy",
+  "ledger",
+] }
+alloy-primitives = { version = "0.5.4", features = ["rand"] }
 alloy-sol-types = { version = "0.5.4" }
 anyhow = "1.0.70"
 tracing = "0.1.37"
@@ -26,7 +28,7 @@ serde = "1.0.195"
 tokio = { version = "1.28.0", features = ["full"] }
 
 [lints.clippy]
-all= "warn"
+all = "warn"
 
 [package.metadata.docs.rs]
 all-features = true

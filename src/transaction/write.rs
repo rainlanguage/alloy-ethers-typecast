@@ -94,8 +94,8 @@ mod tests {
     use alloy_sol_types::sol;
     use ethers::core::rand::thread_rng;
     use ethers::providers::Provider;
+    use ethers::signers::LocalWallet;
     use ethers::types::{Bytes, H160};
-    use ethers_signers::LocalWallet;
     use tracing_subscriber;
     use tracing_subscriber::FmtSubscriber;
 
