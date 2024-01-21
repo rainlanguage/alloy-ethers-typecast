@@ -239,6 +239,7 @@ impl JsonRpcClient for MockJsonRpcClient {
 
                 let receipt = TransactionReceipt {
                     transaction_hash: hash,
+                    block_number: Some(1.into()), // we need a block number for PendingTransaction to consider this mined
                     ..Default::default()
                 };
 
@@ -248,6 +249,12 @@ impl JsonRpcClient for MockJsonRpcClient {
                 })?;
 
                 Ok(response)
+            }
+            "eth_blockNumber" => {
+                debug!("MockJsonRpcClient: called eth_blockNumber");
+                Ok(serde_json::from_value(json!("0x10")).map_err(|_| {
+                    ProviderError::CustomError("Failed to deserialize response".into())
+                })?)
             }
             _ => panic!(
                 "MockJsonRpcClient method {:?} with params {:?} not implemented",

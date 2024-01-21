@@ -5,6 +5,17 @@ use alloy_sol_types::SolCall;
 use derive_builder::Builder;
 use ethers::providers::{Http, JsonRpcClient, Middleware, Provider};
 use ethers::types::transaction::eip2718::TypedTransaction;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum ReadableClientError {
+    #[error("failed to instantiate provider: {0}")]
+    CreateReadableClientHttpError(String),
+    #[error("failed to read call: {0}")]
+    ReadCallError(String),
+    #[error("failed to decode return: {0}")]
+    ReadDecodeReturnError(String),
+}
 
 #[derive(Builder)]
 pub struct ReadContractParameters<C: SolCall> {
@@ -20,9 +31,9 @@ pub struct ReadableClient<P: JsonRpcClient>(Provider<P>);
 pub type ReadableClientHttp = ReadableClient<Http>;
 
 impl ReadableClient<Http> {
-    pub fn new_from_url(url: String) -> anyhow::Result<Self> {
-        let provider =
-            Provider::<Http>::try_from(url).expect("could not instantiate HTTP Provider");
+    pub fn new_from_url(url: String) -> Result<Self, ReadableClientError> {
+        let provider = Provider::<Http>::try_from(url)
+            .map_err(|err| ReadableClientError::CreateReadableClientHttpError(err.to_string()))?;
         Ok(Self(provider))
     }
 }
@@ -37,7 +48,7 @@ impl<P: JsonRpcClient> ReadableClient<P> {
     pub async fn read<C: SolCall>(
         &self,
         parameters: ReadContractParameters<C>,
-    ) -> anyhow::Result<<C as SolCall>::Return> {
+    ) -> Result<<C as SolCall>::Return, ReadableClientError> {
         let data = parameters.call.abi_encode();
 
         let transaction_request = AlloyTransactionRequest::new()
@@ -55,9 +66,10 @@ impl<P: JsonRpcClient> ReadableClient<P> {
                 }),
             )
             .await
-            .map_err(|err| anyhow::anyhow!("{}", err))?;
+            .map_err(|err| ReadableClientError::ReadCallError(err.to_string()))?;
 
-        let return_typed = C::abi_decode_returns(res.to_vec().as_slice(), true)?;
+        let return_typed = C::abi_decode_returns(res.to_vec().as_slice(), true)
+            .map_err(|err| ReadableClientError::ReadDecodeReturnError(err.to_string()))?;
 
         Ok(return_typed)
     }

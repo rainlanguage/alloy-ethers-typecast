@@ -7,7 +7,18 @@ use ethers::providers::Middleware;
 use ethers::signers::Signer;
 use ethers::types::TransactionReceipt;
 use ethers::utils::hex;
+use thiserror::Error;
 use tracing::info;
+
+#[derive(Error, Debug)]
+pub enum WritableClientError {
+    #[error("failed to send transaction: {0}")]
+    WriteSendTxError(String),
+    #[error("failed to confirm transaction: {0}")]
+    WriteConfirmationError(String),
+    #[error("transaction failed")]
+    WriteFailedTxError(),
+}
 
 #[derive(Builder)]
 pub struct WriteContractParameters<C: SolCall> {
@@ -39,16 +50,19 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
     pub async fn write<C: SolCall>(
         &self,
         parameters: WriteContractParameters<C>,
-    ) -> anyhow::Result<TransactionReceipt> {
+    ) -> Result<TransactionReceipt, WritableClientError> {
         let pending_tx = self.write_pending(parameters).await?;
 
         info!("Transaction submitted. Awaiting block confirmations...");
 
-        let tx_confirmation = pending_tx.confirmations(4).await?;
+        let tx_confirmation = pending_tx
+            .confirmations(4)
+            .await
+            .map_err(|err| WritableClientError::WriteConfirmationError(err.to_string()))?;
 
         let tx_receipt = match tx_confirmation {
             Some(receipt) => receipt,
-            None => return Err(anyhow::anyhow!("Transaction failed")),
+            None => return Err(WritableClientError::WriteFailedTxError()),
         };
 
         info!("Transaction Confirmed");
@@ -63,7 +77,7 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
     pub async fn write_pending<C: SolCall>(
         &self,
         parameters: WriteContractParameters<C>,
-    ) -> anyhow::Result<ethers::providers::PendingTransaction<'_, M::Provider>> {
+    ) -> Result<ethers::providers::PendingTransaction<'_, M::Provider>, WritableClientError> {
         let transaction_request = AlloyTransactionRequest::new()
             .with_to(Some(parameters.address))
             .with_data(Some(parameters.call.abi_encode()))
@@ -79,7 +93,7 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
             .0
             .send_transaction(ethers_transaction_request, None)
             .await
-            .map_err(|err| anyhow::anyhow!("{}", err))?;
+            .map_err(|err| WritableClientError::WriteSendTxError(err.to_string()))?;
 
         Ok(pending_tx)
     }
