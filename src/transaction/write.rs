@@ -13,17 +13,17 @@ use tracing::info;
 pub struct WriteContractParameters<C: SolCall> {
     pub call: C,
     pub address: Address,
-    #[builder(setter(into, strip_option), default)]
+    #[builder(setter(into), default)]
     pub gas: Option<U256>,
-    #[builder(setter(into, strip_option), default)]
+    #[builder(setter(into), default)]
     pub gas_price: Option<U256>,
-    #[builder(setter(into, strip_option), default)]
+    #[builder(setter(into), default)]
     pub max_fee_per_gas: Option<U256>,
-    #[builder(setter(into, strip_option), default)]
+    #[builder(setter(into), default)]
     pub max_priority_fee_per_gas: Option<U256>,
-    #[builder(setter(into, strip_option), default)]
+    #[builder(setter(into), default)]
     pub nonce: Option<U256>,
-    #[builder(setter(into, strip_option), default)]
+    #[builder(setter(into), default)]
     pub value: Option<U256>,
 }
 #[derive(Clone)]
@@ -130,12 +130,12 @@ mod tests {
                 a: U256::from(42),
                 b: U256::from(10),
             })
-            .gas(U256::from(100000))
-            .gas_price(U256::from(100000))
-            .max_fee_per_gas(U256::from(100000))
+            .gas(Some(U256::from(100000)))
+            .gas_price(Some(U256::from(100000)))
+            .max_fee_per_gas(Some(U256::from(100000)))
             .max_priority_fee_per_gas(U256::from(100000))
-            .nonce(U256::from(100000))
-            .value(U256::from(100000))
+            .nonce(Some(U256::from(100000)))
+            .value(Some(U256::from(100000)))
             .build()?;
 
         assert_eq!(parameters.address, Address::repeat_byte(0x11));
