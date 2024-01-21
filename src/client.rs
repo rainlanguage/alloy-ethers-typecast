@@ -7,7 +7,11 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum LedgerClientError {
     #[error("failed to instantiate provider: {0}")]
-    CreateLedgerClientError(String),
+    CreateLedgerClientProviderError(String),
+    #[error("failed to instantiate Ledger device: {0}")]
+    CreateLedgerClientDeviceError(String),
+    #[error("failed to instantiate Ledger middleware: {0}")]
+    CreateLedgerClientMiddlewareError(String),
 }
 
 pub struct LedgerClient {
@@ -25,26 +29,12 @@ impl LedgerClient {
             chain_id,
         )
         .await
-        .map_err(|err| {
-            LedgerClientError::CreateLedgerClientError(format!(
-                "Failed to instantiate Ledger device: {}",
-                err.to_string()
-            ))
-        })?;
-        let provider = Provider::<Http>::try_from(rpc_url.clone()).map_err(|err| {
-            LedgerClientError::CreateLedgerClientError(format!(
-                "Failed to instantiate provider: {}",
-                err.to_string()
-            ))
-        })?;
+        .map_err(|err| LedgerClientError::CreateLedgerClientDeviceError(err.to_string()))?;
+        let provider = Provider::<Http>::try_from(rpc_url.clone())
+            .map_err(|err| LedgerClientError::CreateLedgerClientProviderError(err.to_string()))?;
         let client = SignerMiddleware::new_with_provider_chain(provider, wallet)
             .await
-            .map_err(|err| {
-                LedgerClientError::CreateLedgerClientError(format!(
-                    "Failed to instantiate Ledger client: {}",
-                    err.to_string()
-                ))
-            })?;
+            .map_err(|err| LedgerClientError::CreateLedgerClientMiddlewareError(err.to_string()))?;
         Ok(Self { client })
     }
 }
