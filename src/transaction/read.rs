@@ -21,7 +21,7 @@ pub enum ReadableClientError {
 pub struct ReadContractParameters<C: SolCall> {
     pub address: Address,
     pub call: C,
-    #[builder(setter(into, strip_option), default)]
+    #[builder(setter(into), default)]
     pub block_number: Option<U64>,
 }
 
@@ -114,7 +114,7 @@ mod tests {
                 a: U256::from(42),
                 b: U256::from(10),
             })
-            .block_number(U64::from(1))
+            .block_number(Some(U64::from(1)))
             .build()?;
 
         assert_eq!(parameters.address, Address::repeat_byte(0x11));
