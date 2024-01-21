@@ -1,6 +1,6 @@
 use ethers::middleware::SignerMiddleware;
 use ethers::prelude::{Http, Provider};
-use ethers_signers::{HDPath, Ledger};
+use ethers::signers::{HDPath, Ledger};
 
 use thiserror::Error;
 

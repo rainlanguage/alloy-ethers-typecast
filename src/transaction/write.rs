@@ -51,12 +51,7 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
 
         info!("Transaction submitted. Awaiting block confirmations...");
 
-        let tx_confirmation = pending_tx.confirmations(0).await.map_err(|err| {
-            WritableClientError::WriteError(format!(
-                "Failed to confirm transaction: {}",
-                err.to_string()
-            ))
-        })?;
+        let tx_confirmation = pending_tx.confirmations(4).await?;
 
         let tx_receipt = match tx_confirmation {
             Some(receipt) => receipt,
@@ -106,8 +101,8 @@ mod tests {
     use alloy_sol_types::sol;
     use ethers::core::rand::thread_rng;
     use ethers::providers::Provider;
+    use ethers::signers::LocalWallet;
     use ethers::types::{Bytes, H160};
-    use ethers_signers::LocalWallet;
     use tracing_subscriber;
     use tracing_subscriber::FmtSubscriber;
 
