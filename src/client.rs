@@ -1,6 +1,6 @@
-use ethers::signers::{HDPath, Ledger};
 use ethers::middleware::SignerMiddleware;
 use ethers::prelude::{Http, Provider};
+use ethers::signers::{HDPath, Ledger};
 
 pub struct LedgerClient {
     pub client: SignerMiddleware<Provider<Http>, Ledger>,
