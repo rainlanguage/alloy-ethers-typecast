@@ -44,7 +44,7 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
 
         info!("Transaction submitted. Awaiting block confirmations...");
 
-        let tx_confirmation = pending_tx.confirmations(0).await?;
+        let tx_confirmation = pending_tx.confirmations(4).await?;
 
         let tx_receipt = match tx_confirmation {
             Some(receipt) => receipt,
