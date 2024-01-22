@@ -1,0 +1,83 @@
+use alloy_sol_types::SolCall;
+use ethers::middleware::SignerMiddleware;
+use ethers::providers::Middleware;
+use ethers::signers::Signer;
+use ethers::types::transaction::eip2718::TypedTransaction;
+use ethers::types::{Bytes, TransactionReceipt};
+
+use crate::transaction::{WritableClient, WritableClientError, WriteContractParameters};
+
+#[derive(Clone)]
+pub enum WriteTransactionStatus<C: SolCall> {
+    PendingPrepare(WriteContractParameters<C>),
+    PendingSign(TypedTransaction),
+    PendingSend(Bytes),
+    PendingConfirm,
+    Confirmed(TransactionReceipt),
+}
+
+pub struct WriteTransaction<M: Middleware, S: Signer, C: SolCall + Clone> {
+    pub client: WritableClient<M, S>,
+    pub status: WriteTransactionStatus<C>,
+    pub confirmations: u8,
+    pub status_changed: fn(WriteTransactionStatus<C>) -> (),
+}
+
+impl<M: Middleware, S: Signer, C: SolCall + Clone> WriteTransaction<M, S, C> {
+    pub fn new(
+        client: SignerMiddleware<M, S>,
+        parameters: WriteContractParameters<C>,
+        confirmations: u8,
+        status_changed: fn(WriteTransactionStatus<C>) -> (),
+    ) -> Self {
+        Self {
+            client: WritableClient::new(client),
+            status: WriteTransactionStatus::<C>::PendingPrepare(parameters),
+            confirmations,
+            status_changed,
+        }
+    }
+
+    pub async fn execute(&mut self) -> Result<(), WritableClientError> {
+        self.prepare().await?;
+        self.sign().await?;
+        self.send().await?;
+        Ok(())
+    }
+
+    async fn prepare(&mut self) -> Result<(), WritableClientError> {
+        if let WriteTransactionStatus::PendingPrepare(parameters) = &self.status {
+            let tx_request = self.client.prepare_request(parameters.clone()).await?;
+            self.update_status(WriteTransactionStatus::PendingSign(tx_request));
+        }
+        Ok(())
+    }
+
+    async fn sign(&mut self) -> Result<(), WritableClientError> {
+        if let WriteTransactionStatus::PendingSign(tx_request) = &self.status {
+            let signed_tx = self.client.sign_request(tx_request.clone()).await?;
+            self.update_status(WriteTransactionStatus::PendingSend(signed_tx));
+        }
+        Ok(())
+    }
+
+    async fn send(&mut self) -> Result<(), WritableClientError> {
+        if let WriteTransactionStatus::PendingSend(signed_tx) = &self.status {
+            let pending_tx = self.client.send_request(signed_tx.clone()).await?;
+            let receipt = pending_tx
+                .confirmations(self.confirmations.into())
+                .await
+                .map_err(|e| WritableClientError::WriteConfirmationError(e.to_string()))?
+                .ok_or(WritableClientError::WriteConfirmationError(
+                    "Transaction did not receive 4 confirmations".into(),
+                ))?;
+            self.update_status(WriteTransactionStatus::Confirmed(receipt));
+        }
+        Ok(())
+    }
+
+    fn update_status(&mut self, status: WriteTransactionStatus<C>) {
+        self.status = status.clone();
+        (self.status_changed)(status);
+    }
+}
