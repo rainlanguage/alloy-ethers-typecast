@@ -9,7 +9,7 @@ use crate::transaction::{WritableClient, WritableClientError, WriteContractParam
 
 #[derive(Clone, Debug)]
 pub enum WriteTransactionStatus<C: SolCall> {
-    PendingPrepare(WriteContractParameters<C>),
+    PendingPrepare(Box<WriteContractParameters<C>>),
     PendingSign(TypedTransaction),
     PendingSend(Bytes),
     Confirmed(TransactionReceipt),
@@ -38,7 +38,7 @@ impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<
     ) -> Self {
         Self {
             client: WritableClient::new(client),
-            status: WriteTransactionStatus::<C>::PendingPrepare(parameters),
+            status: WriteTransactionStatus::<C>::PendingPrepare(Box::new(parameters)),
             confirmations,
             status_changed,
         }
@@ -53,7 +53,7 @@ impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<
 
     async fn prepare(&mut self) -> Result<(), WritableClientError> {
         if let WriteTransactionStatus::PendingPrepare(parameters) = &self.status {
-            let tx_request = self.client.prepare_request(parameters.clone()).await?;
+            let tx_request = self.client.prepare_request(*parameters.clone()).await?;
             self.update_status(WriteTransactionStatus::PendingSign(tx_request));
         }
         Ok(())
