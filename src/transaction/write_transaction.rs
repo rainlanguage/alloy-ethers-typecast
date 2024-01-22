@@ -12,7 +12,6 @@ pub enum WriteTransactionStatus<C: SolCall> {
     PendingPrepare(WriteContractParameters<C>),
     PendingSign(TypedTransaction),
     PendingSend(Bytes),
-    PendingConfirm,
     Confirmed(TransactionReceipt),
 }
 
@@ -75,9 +74,10 @@ impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<
                 .confirmations(self.confirmations.into())
                 .await
                 .map_err(|e| WritableClientError::WriteConfirmationError(e.to_string()))?
-                .ok_or(WritableClientError::WriteConfirmationError(
-                    "Transaction did not receive 4 confirmations".into(),
-                ))?;
+                .ok_or(WritableClientError::WriteConfirmationError(format!(
+                    "Transaction did not receive {} confirmations",
+                    self.confirmations,
+                )))?;
             self.update_status(WriteTransactionStatus::Confirmed(receipt));
         }
         Ok(())
