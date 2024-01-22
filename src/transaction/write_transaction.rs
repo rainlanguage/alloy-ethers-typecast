@@ -16,19 +16,26 @@ pub enum WriteTransactionStatus<C: SolCall> {
     Confirmed(TransactionReceipt),
 }
 
-pub struct WriteTransaction<M: Middleware, S: Signer, C: SolCall + Clone> {
+pub struct WriteTransaction<
+    M: Middleware,
+    S: Signer,
+    C: SolCall + Clone,
+    F: Fn(WriteTransactionStatus<C>) -> (),
+> {
     pub client: WritableClient<M, S>,
     pub status: WriteTransactionStatus<C>,
     pub confirmations: u8,
-    pub status_changed: fn(WriteTransactionStatus<C>) -> (),
+    pub status_changed: F,
 }
 
-impl<M: Middleware, S: Signer, C: SolCall + Clone> WriteTransaction<M, S, C> {
+impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<C>) -> ()>
+    WriteTransaction<M, S, C, F>
+{
     pub fn new(
         client: SignerMiddleware<M, S>,
         parameters: WriteContractParameters<C>,
         confirmations: u8,
-        status_changed: fn(WriteTransactionStatus<C>) -> (),
+        status_changed: F,
     ) -> Self {
         Self {
             client: WritableClient::new(client),
