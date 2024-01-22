@@ -7,7 +7,7 @@ use ethers::types::{Bytes, TransactionReceipt};
 
 use crate::transaction::{WritableClient, WritableClientError, WriteContractParameters};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum WriteTransactionStatus<C: SolCall> {
     PendingPrepare(WriteContractParameters<C>),
     PendingSign(TypedTransaction),
@@ -19,7 +19,7 @@ pub struct WriteTransaction<
     M: Middleware,
     S: Signer,
     C: SolCall + Clone,
-    F: Fn(WriteTransactionStatus<C>) -> (),
+    F: Fn(WriteTransactionStatus<C>),
 > {
     pub client: WritableClient<M, S>,
     pub status: WriteTransactionStatus<C>,
@@ -27,7 +27,7 @@ pub struct WriteTransaction<
     pub status_changed: F,
 }
 
-impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<C>) -> ()>
+impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<C>)>
     WriteTransaction<M, S, C, F>
 {
     pub fn new(
