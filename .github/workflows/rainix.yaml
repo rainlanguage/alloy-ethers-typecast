@@ -23,7 +23,7 @@ jobs:
         uses: DeterminateSystems/nix-installer-action@v4
       - uses: DeterminateSystems/magic-nix-cache-action@v2
 
-      - run: nix run .#rainix-prelude
+      - run: nix run .#rainix-rs-prelude
       - run: nix run .#i9r-prelude
         working-directory: lib/rain.interpreter
       - name: Run ${{ matrix.task }}
