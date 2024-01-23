@@ -7,9 +7,9 @@ use ethers::types::{Bytes, TransactionReceipt};
 
 use crate::transaction::{WritableClient, WritableClientError, WriteContractParameters};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum WriteTransactionStatus<C: SolCall> {
-    PendingPrepare(WriteContractParameters<C>),
+    PendingPrepare(Box<WriteContractParameters<C>>),
     PendingSign(TypedTransaction),
     PendingSend(Bytes),
     Confirmed(TransactionReceipt),
@@ -19,7 +19,7 @@ pub struct WriteTransaction<
     M: Middleware,
     S: Signer,
     C: SolCall + Clone,
-    F: Fn(WriteTransactionStatus<C>) -> (),
+    F: Fn(WriteTransactionStatus<C>),
 > {
     pub client: WritableClient<M, S>,
     pub status: WriteTransactionStatus<C>,
@@ -27,7 +27,7 @@ pub struct WriteTransaction<
     pub status_changed: F,
 }
 
-impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<C>) -> ()>
+impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<C>)>
     WriteTransaction<M, S, C, F>
 {
     pub fn new(
@@ -38,13 +38,17 @@ impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<
     ) -> Self {
         Self {
             client: WritableClient::new(client),
-            status: WriteTransactionStatus::<C>::PendingPrepare(parameters),
+            status: WriteTransactionStatus::<C>::PendingPrepare(Box::new(parameters)),
             confirmations,
             status_changed,
         }
     }
 
     pub async fn execute(&mut self) -> Result<(), WritableClientError> {
+        if let WriteTransactionStatus::PendingPrepare(parameters) = &self.status {
+            self.update_status(WriteTransactionStatus::PendingPrepare(parameters.clone()));
+        }
+
         self.prepare().await?;
         self.sign().await?;
         self.send().await?;
@@ -53,7 +57,7 @@ impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<
 
     async fn prepare(&mut self) -> Result<(), WritableClientError> {
         if let WriteTransactionStatus::PendingPrepare(parameters) = &self.status {
-            let tx_request = self.client.prepare_request(parameters.clone()).await?;
+            let tx_request = self.client.prepare_request(*parameters.clone()).await?;
             self.update_status(WriteTransactionStatus::PendingSign(tx_request));
         }
         Ok(())

@@ -25,7 +25,7 @@ pub enum WritableClientError {
     WriteFailedTxError(),
 }
 
-#[derive(Builder, Clone)]
+#[derive(Builder, Clone, Debug)]
 pub struct WriteContractParameters<C: SolCall> {
     pub call: C,
     pub address: Address,
