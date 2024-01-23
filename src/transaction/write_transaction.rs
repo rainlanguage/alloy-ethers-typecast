@@ -45,6 +45,10 @@ impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<
     }
 
     pub async fn execute(&mut self) -> Result<(), WritableClientError> {
+        if let WriteTransactionStatus::PendingPrepare(parameters) = &self.status {
+            self.update_status(WriteTransactionStatus::PendingPrepare(parameters.clone()));
+        }
+
         self.prepare().await?;
         self.sign().await?;
         self.send().await?;
