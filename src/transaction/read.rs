@@ -1,6 +1,6 @@
-use crate::alloy_u64_to_ethers;
 use crate::request_shim::{AlloyTransactionRequest, TransactionRequestShim};
-use alloy_primitives::{Address, U64};
+use crate::{alloy_u64_to_ethers, ethers_u256_to_alloy};
+use alloy_primitives::{Address, U256, U64};
 use alloy_sol_types::SolCall;
 use derive_builder::Builder;
 use ethers::providers::{Http, JsonRpcClient, Middleware, Provider};
@@ -15,6 +15,8 @@ pub enum ReadableClientError {
     ReadCallError(String),
     #[error("failed to decode return: {0}")]
     ReadDecodeReturnError(String),
+    #[error("failed to get chain id: {0}")]
+    ReadChainIdError(String),
 }
 
 #[derive(Builder)]
@@ -72,6 +74,16 @@ impl<P: JsonRpcClient> ReadableClient<P> {
             .map_err(|err| ReadableClientError::ReadDecodeReturnError(err.to_string()))?;
 
         Ok(return_typed)
+    }
+
+    pub async fn get_chainid(&self) -> Result<U256, ReadableClientError> {
+        let chainid = self
+            .0
+            .get_chainid()
+            .await
+            .map_err(|err| ReadableClientError::ReadChainIdError(err.to_string()))?;
+
+        Ok(ethers_u256_to_alloy(chainid))
     }
 }
 
@@ -162,6 +174,30 @@ mod tests {
 
         assert_eq!(bar, U256::from(42));
         assert_eq!(baz, Address::repeat_byte(0x11));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_chainid() -> anyhow::Result<()> {
+        // Create a mock Provider
+        let mock_provider = MockProvider::new();
+
+        // Create a mock response
+        let foo_response =
+            json!("0x0000000000000000000000000000000000000000000000000000000000000005");
+
+        let mock_response = MockResponse::Value(foo_response);
+        mock_provider.push_response(mock_response);
+
+        // Create a Provider instance with the mock provider
+        let client = Provider::new(mock_provider);
+
+        // Create a ReadableClient instance with the mock provider
+        let read_contract = ReadableClient::new(client);
+        let res = read_contract.get_chainid().await.unwrap();
+
+        assert_eq!(res, U256::from(5));
 
         Ok(())
     }
