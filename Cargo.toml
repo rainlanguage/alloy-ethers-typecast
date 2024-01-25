@@ -9,7 +9,7 @@ homepage = "https://github.com/rainlanguage/rain.interpreter"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ethers = { git = "https://github.com/gakonst/ethers-rs.git", rev = "88095ba47eb6a3507f0db1767353b387b27a6e98", features = [
+ethers = { git = "https://github.com/gakonst/ethers-rs.git", rev = "b730b74a1c8d142d334aef71c949248139dd0d47", features = [
   "legacy",
   "ledger",
 ] }
