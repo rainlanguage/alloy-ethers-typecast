@@ -146,6 +146,10 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
             .await
             .map_err(|e| WritableClientError::WriteSendTxError(e.to_string()))
     }
+
+    pub fn inner(&self) -> &SignerMiddleware<M, S> {
+        &self.0
+    }
 }
 
 #[cfg(test)]

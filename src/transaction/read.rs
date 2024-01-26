@@ -85,6 +85,10 @@ impl<P: JsonRpcClient> ReadableClient<P> {
 
         Ok(ethers_u256_to_alloy(chainid))
     }
+
+    pub fn inner(&self) -> &Provider<P> {
+        &self.0
+    }
 }
 
 #[cfg(test)]
