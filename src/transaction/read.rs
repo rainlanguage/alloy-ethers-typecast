@@ -24,6 +24,8 @@ pub struct ReadContractParameters<C: SolCall> {
     pub address: Address,
     pub call: C,
     #[builder(setter(into), default)]
+    pub gas: Option<U256>,
+    #[builder(setter(into), default)]
     pub block_number: Option<U64>,
 }
 
@@ -55,6 +57,7 @@ impl<P: JsonRpcClient> ReadableClient<P> {
 
         let transaction_request = AlloyTransactionRequest::new()
             .with_to(Some(parameters.address))
+            .with_gas(parameters.gas)
             .with_data(Some(data));
 
         let res = self
