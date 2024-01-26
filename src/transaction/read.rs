@@ -6,7 +6,7 @@ use derive_builder::Builder;
 use ethers::providers::{Http, JsonRpcClient, Middleware, Provider};
 use ethers::types::transaction::eip2718::TypedTransaction;
 use thiserror::Error;
-
+use tracing::info;
 #[derive(Error, Debug)]
 pub enum ReadableClientError {
     #[error("failed to instantiate provider: {0}")]
@@ -73,6 +73,7 @@ impl<P: JsonRpcClient> ReadableClient<P> {
             .await
             .map_err(|err| ReadableClientError::ReadCallError(err.to_string()))?;
 
+        info!("response is {:?}", res);
         let return_typed = C::abi_decode_returns(res.to_vec().as_slice(), true)
             .map_err(|err| ReadableClientError::ReadDecodeReturnError(err.to_string()))?;
 
