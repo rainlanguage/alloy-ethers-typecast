@@ -1,17 +1,17 @@
-use ethers::middleware::SignerMiddleware;
-use ethers::prelude::{Http, Provider};
-use ethers::signers::{HDPath, Ledger};
-
+use ethers::middleware::{SignerMiddleware, gas_oracle::GasOracleMiddleware};
+use ethers::prelude::{Http, Provider, gas_oracle::ProviderOracle, signer::SignerMiddlewareError};
+use ethers::signers::{HDPath, Ledger, LedgerError};
+use url::ParseError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum LedgerClientError {
-    #[error("failed to instantiate provider: {0}")]
-    CreateLedgerClientProviderError(String),
-    #[error("failed to instantiate Ledger device: {0}")]
-    CreateLedgerClientDeviceError(String),
-    #[error("failed to instantiate Ledger middleware: {0}")]
-    CreateLedgerClientMiddlewareError(String),
+    #[error(transparent)]
+    LedgerError(#[from] LedgerError),
+    #[error(transparent)]
+    UrlParserError(#[from] ParseError),
+    #[error(transparent)]
+    SignerMiddlewareError(#[from] SignerMiddlewareError<Provider<Http>, Ledger>),
 }
 
 pub struct LedgerClient {
@@ -28,13 +28,10 @@ impl LedgerClient {
             HDPath::LedgerLive(ledger_derivation_path.unwrap_or(0)),
             chain_id,
         )
-        .await
-        .map_err(|err| LedgerClientError::CreateLedgerClientDeviceError(err.to_string()))?;
-        let provider = Provider::<Http>::try_from(rpc_url.clone())
-            .map_err(|err| LedgerClientError::CreateLedgerClientProviderError(err.to_string()))?;
-        let client = SignerMiddleware::new_with_provider_chain(provider, wallet)
-            .await
-            .map_err(|err| LedgerClientError::CreateLedgerClientMiddlewareError(err.to_string()))?;
+        .await?;
+        let provider = Provider::<Http>::try_from(rpc_url.clone())?;
+        let client = SignerMiddleware::new_with_provider_chain(provider.clone(), wallet)
+            .await?;
         Ok(Self { client })
     }
 }
