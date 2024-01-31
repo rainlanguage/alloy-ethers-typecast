@@ -15,7 +15,7 @@ pub enum LedgerClientError {
 }
 
 pub struct LedgerClient {
-    pub client: SignerMiddleware<Provider<Http>, Ledger>,
+    pub client: GasOracleMiddleware<SignerMiddleware<Provider<Http>, Ledger>, ProviderOracle<Provider<Http>>>,
 }
 
 impl LedgerClient {
@@ -30,8 +30,9 @@ impl LedgerClient {
         )
         .await?;
         let provider = Provider::<Http>::try_from(rpc_url.clone())?;
-        let client = SignerMiddleware::new_with_provider_chain(provider.clone(), wallet)
+        let signer = SignerMiddleware::new_with_provider_chain(provider.clone(), wallet)
             .await?;
+        let client = GasOracleMiddleware::new(signer, ProviderOracle::new(provider));
         Ok(Self { client })
     }
 }
