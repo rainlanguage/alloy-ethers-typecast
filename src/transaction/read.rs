@@ -3,20 +3,18 @@ use crate::{alloy_u64_to_ethers, ethers_u256_to_alloy};
 use alloy_primitives::{Address, U256, U64};
 use alloy_sol_types::SolCall;
 use derive_builder::Builder;
-use ethers::providers::{Http, JsonRpcClient, Middleware, Provider};
+use ethers::providers::{Http, JsonRpcClient, Middleware, Provider, ProviderError};
 use ethers::types::transaction::eip2718::TypedTransaction;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ReadableClientError {
-    #[error("failed to instantiate provider: {0}")]
-    CreateReadableClientHttpError(String),
-    #[error("failed to read call: {0}")]
-    ReadCallError(String),
-    #[error("failed to decode return: {0}")]
-    ReadDecodeReturnError(String),
-    #[error("failed to get chain id: {0}")]
-    ReadChainIdError(String),
+    #[error(transparent)]
+    AlloySolTypesError(#[from] alloy_sol_types::Error),
+    #[error(transparent)]
+    ProviderError(#[from] ProviderError),
+    #[error(transparent)]
+    URLParseError(#[from] url::ParseError,)
 }
 
 #[derive(Builder)]
@@ -34,8 +32,7 @@ pub type ReadableClientHttp = ReadableClient<Http>;
 
 impl ReadableClient<Http> {
     pub fn new_from_url(url: String) -> Result<Self, ReadableClientError> {
-        let provider = Provider::<Http>::try_from(url)
-            .map_err(|err| ReadableClientError::CreateReadableClientHttpError(err.to_string()))?;
+        let provider = Provider::<Http>::try_from(url)?;
         Ok(Self(provider))
     }
 }
@@ -67,11 +64,9 @@ impl<P: JsonRpcClient> ReadableClient<P> {
                     ))
                 }),
             )
-            .await
-            .map_err(|err| ReadableClientError::ReadCallError(err.to_string()))?;
+            .await?;
 
-        let return_typed = C::abi_decode_returns(res.to_vec().as_slice(), true)
-            .map_err(|err| ReadableClientError::ReadDecodeReturnError(err.to_string()))?;
+        let return_typed = C::abi_decode_returns(res.to_vec().as_slice(), true)?;
 
         Ok(return_typed)
     }
@@ -80,8 +75,7 @@ impl<P: JsonRpcClient> ReadableClient<P> {
         let chainid = self
             .0
             .get_chainid()
-            .await
-            .map_err(|err| ReadableClientError::ReadChainIdError(err.to_string()))?;
+            .await?;
 
         Ok(ethers_u256_to_alloy(chainid))
     }
