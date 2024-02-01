@@ -5,6 +5,7 @@ use ethers::types::BlockNumber;
 use ethers::utils;
 use thiserror::Error;
 use serde::{Serialize, Deserialize};
+use tracing::debug;
 
 const EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_SLOW: f64 = 25.0;
 const EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_MEDIUM: f64 = 50.0;
@@ -105,8 +106,12 @@ where
                     &[self.fee_history_percentile],
                 )
                 .await?;
+            
+            debug!("Fee history at {} percentile: {:?}", self.fee_history_percentile, fee_history);
+
             let (max_fee_per_gas, max_priority_fee_per_gas) =
                 utils::eip1559_default_estimator(base_fee_per_gas, fee_history.reward);
+            debug!("Estimator results: max_fee_per_gas={}, max_priority_fee_per_gas={}", max_fee_per_gas, max_priority_fee_per_gas);
 
             inner_tx.max_fee_per_gas = Some(max_fee_per_gas);
             inner_tx.max_priority_fee_per_gas = Some(max_priority_fee_per_gas);
