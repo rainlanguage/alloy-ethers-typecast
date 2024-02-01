@@ -1,7 +1,8 @@
+use crate::transaction::gas_fee_middleware::GasFeeSpeed;
+use crate::transaction::GasFeeMiddleware;
 use ethers::middleware::SignerMiddleware;
 use ethers::prelude::{Http, Provider};
 use ethers::signers::{HDPath, Ledger};
-
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -15,7 +16,7 @@ pub enum LedgerClientError {
 }
 
 pub struct LedgerClient {
-    pub client: SignerMiddleware<Provider<Http>, Ledger>,
+    pub client: SignerMiddleware<GasFeeMiddleware<Provider<Http>>, Ledger>,
 }
 
 impl LedgerClient {
@@ -23,6 +24,7 @@ impl LedgerClient {
         ledger_derivation_path: Option<usize>,
         chain_id: u64,
         rpc_url: String,
+        gas_fee_speed: GasFeeSpeed,
     ) -> Result<Self, LedgerClientError> {
         let wallet = Ledger::new(
             HDPath::LedgerLive(ledger_derivation_path.unwrap_or(0)),
@@ -32,7 +34,8 @@ impl LedgerClient {
         .map_err(|err| LedgerClientError::CreateLedgerClientDeviceError(err.to_string()))?;
         let provider = Provider::<Http>::try_from(rpc_url.clone())
             .map_err(|err| LedgerClientError::CreateLedgerClientProviderError(err.to_string()))?;
-        let client = SignerMiddleware::new_with_provider_chain(provider, wallet)
+        let gas_fee_middleware = GasFeeMiddleware::new(provider, gas_fee_speed);
+        let client = SignerMiddleware::new_with_provider_chain(gas_fee_middleware, wallet)
             .await
             .map_err(|err| LedgerClientError::CreateLedgerClientMiddlewareError(err.to_string()))?;
         Ok(Self { client })
