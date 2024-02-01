@@ -17,6 +17,7 @@ const EIP1559_FEE_ESTIMATION_REWARD_PERCENTILES: [f64; 4] = [
     EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_INSTANT,
 ];
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[repr(u8)]
 pub enum GasFeeSpeed {
     Slow,
