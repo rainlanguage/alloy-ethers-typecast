@@ -14,7 +14,7 @@ pub enum ReadableClientError {
     #[error(transparent)]
     ProviderError(#[from] ProviderError),
     #[error(transparent)]
-    URLParseError(#[from] url::ParseError,)
+    URLParseError(#[from] url::ParseError),
 }
 
 #[derive(Builder)]
@@ -72,10 +72,7 @@ impl<P: JsonRpcClient> ReadableClient<P> {
     }
 
     pub async fn get_chainid(&self) -> Result<U256, ReadableClientError> {
-        let chainid = self
-            .0
-            .get_chainid()
-            .await?;
+        let chainid = self.0.get_chainid().await?;
 
         Ok(ethers_u256_to_alloy(chainid))
     }

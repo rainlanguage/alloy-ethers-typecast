@@ -1,6 +1,6 @@
 use crate::transaction::{GasFeeMiddleware, GasFeeMiddlewareError, GasFeeSpeed};
 use ethers::middleware::SignerMiddleware;
-use ethers::prelude::{Http, Provider, signer::SignerMiddlewareError};
+use ethers::prelude::{signer::SignerMiddlewareError, Http, Provider};
 use ethers::signers::{HDPath, Ledger, LedgerError};
 use thiserror::Error;
 
@@ -34,9 +34,8 @@ impl LedgerClient {
         .await?;
         let provider = Provider::<Http>::try_from(rpc_url.clone())?;
         let gas_fee_middleware = GasFeeMiddleware::new(provider, gas_fee_speed)?;
-        let client = SignerMiddleware::new_with_provider_chain(gas_fee_middleware, wallet)
-            .await?;
-        
+        let client = SignerMiddleware::new_with_provider_chain(gas_fee_middleware, wallet).await?;
+
         Ok(Self { client })
     }
 }
