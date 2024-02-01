@@ -1,3 +1,4 @@
+use crate::utils::eip1559_fee_estimator_weighted_average;
 use async_trait::async_trait;
 use ethers::core::types::{transaction::eip2718::TypedTransaction, BlockId};
 use ethers::providers::{Middleware, MiddlewareError, ProviderError};
@@ -115,7 +116,7 @@ where
                 .await?;
 
             let (max_fee_per_gas, max_priority_fee_per_gas) =
-                utils::eip1559_default_estimator(base_fee_per_gas, fee_history.reward);
+                eip1559_fee_estimator_weighted_average(base_fee_per_gas, fee_history.reward);
 
             inner_tx.max_fee_per_gas = Some(max_fee_per_gas);
             inner_tx.max_priority_fee_per_gas = Some(max_priority_fee_per_gas);

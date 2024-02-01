@@ -1,6 +1,8 @@
 pub mod client;
+pub mod gas_fee_middleware;
 pub mod request_shim;
 pub mod transaction;
+pub mod utils;
 
 /// Converts [ethers::types::Address] to [alloy_primitives::Address]
 pub fn ethers_address_to_alloy(address: ethers::types::Address) -> alloy_primitives::Address {

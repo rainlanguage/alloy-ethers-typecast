@@ -1,4 +1,4 @@
-use crate::transaction::{GasFeeMiddleware, GasFeeMiddlewareError, GasFeeSpeed};
+use crate::gas_fee_middleware::{GasFeeMiddleware, GasFeeMiddlewareError, GasFeeSpeed};
 use ethers::middleware::SignerMiddleware;
 use ethers::prelude::{Http, Provider};
 use ethers::signers::{HDPath, Ledger};
