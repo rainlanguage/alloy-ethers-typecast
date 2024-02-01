@@ -1,11 +1,14 @@
+use crate::transaction::{WritableClient, WritableClientError, WriteContractParameters};
 use alloy_sol_types::SolCall;
 use ethers::middleware::SignerMiddleware;
 use ethers::providers::Middleware;
 use ethers::signers::Signer;
 use ethers::types::transaction::eip2718::TypedTransaction;
 use ethers::types::{Bytes, TransactionReceipt};
+use std::time::Duration;
 
-use crate::transaction::{WritableClient, WritableClientError, WriteContractParameters};
+const TRANSACTION_RETRY_INTERVAL_SECONDS: u64 = 5;
+const TRANSACTION_RETRY_COUNT: usize = 15;
 
 #[derive(Clone, Debug)]
 pub enum WriteTransactionStatus<C: SolCall> {
@@ -75,6 +78,8 @@ impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<
         if let WriteTransactionStatus::PendingSend(signed_tx) = &self.status {
             let pending_tx = self.client.send_request(signed_tx.clone()).await?;
             let receipt = pending_tx
+                .interval(Duration::from_secs(TRANSACTION_RETRY_INTERVAL_SECONDS))
+                .retries(TRANSACTION_RETRY_COUNT)
                 .confirmations(self.confirmations.into())
                 .await
                 .map_err(|e| WritableClientError::WriteConfirmationError(e.to_string()))?

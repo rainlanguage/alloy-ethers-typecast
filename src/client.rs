@@ -25,7 +25,7 @@ impl LedgerClient {
         ledger_derivation_path: Option<usize>,
         chain_id: u64,
         rpc_url: String,
-        gas_fee_speed: GasFeeSpeed,
+        gas_fee_speed: Option<GasFeeSpeed>,
     ) -> Result<Self, LedgerClientError> {
         let wallet = Ledger::new(
             HDPath::LedgerLive(ledger_derivation_path.unwrap_or(0)),

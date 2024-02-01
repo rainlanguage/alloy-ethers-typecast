@@ -1,12 +1,14 @@
-use crate::utils::eip1559_fee_estimator_weighted_average;
+use crate::utils::eip1559_fee_estimator;
 use async_trait::async_trait;
 use ethers::core::types::{transaction::eip2718::TypedTransaction, BlockId};
+use ethers::core::utils::format_units;
 use ethers::providers::{Middleware, MiddlewareError, ProviderError};
 use ethers::types::BlockNumber;
-use ethers::utils;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tracing::info;
 
+const EIP1559_FEE_ESTIMATION_PAST_BLOCKS: i32 = 3;
 const EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_SLOW: f64 = 25.0;
 const EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_MEDIUM: f64 = 50.0;
 const EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_FAST: f64 = 75.0;
@@ -28,10 +30,12 @@ pub enum GasFeeSpeed {
     Fastest,
 }
 
+const DEFAULT_GAS_FEE_SPEED: GasFeeSpeed = GasFeeSpeed::Medium;
+
 #[derive(Debug)]
 pub struct GasFeeMiddleware<M> {
     inner: M,
-    fee_history_percentile: f64,
+    gas_fee_speed: Option<GasFeeSpeed>,
 }
 
 #[derive(Error, Debug)]
@@ -65,15 +69,13 @@ impl<M> GasFeeMiddleware<M>
 where
     M: Middleware,
 {
-    pub fn new(inner: M, speed: GasFeeSpeed) -> Result<Self, GasFeeMiddlewareError<M>> {
-        let percentiles_vec = EIP1559_FEE_ESTIMATION_REWARD_PERCENTILES.clone().to_vec();
-        let fee_history_percentile = percentiles_vec
-            .get(speed as usize)
-            .ok_or(GasFeeMiddlewareError::InvalidGasFeeSpeed)?;
-
+    pub fn new(
+        inner: M,
+        gas_fee_speed: Option<GasFeeSpeed>,
+    ) -> Result<Self, GasFeeMiddlewareError<M>> {
         Ok(Self {
             inner,
-            fee_history_percentile: *fee_history_percentile,
+            gas_fee_speed,
         })
     }
 }
@@ -91,42 +93,30 @@ where
         &self.inner
     }
 
-    /// Override the fill_transaction function with our own gas fee estimation.
-    /// Specify a fee percentile for the eth_feeHistory call, based on a desired transaction speed.
-    /// Then use the default ethers-rs estimator function to calculate a max fee and max priority fee from that data.
     async fn fill_transaction(
         &self,
         tx: &mut TypedTransaction,
         block: Option<BlockId>,
     ) -> Result<(), Self::Error> {
-        if let TypedTransaction::Eip1559(ref mut inner_tx) = tx {
-            let base_fee_per_gas = self
-                .get_block(BlockNumber::Latest)
-                .await?
-                .ok_or_else(|| ProviderError::CustomError("Latest block not found".into()))?
-                .base_fee_per_gas
-                .ok_or_else(|| ProviderError::CustomError("EIP-1559 not activated".into()))?;
-
-            let fee_history = self
-                .fee_history(
-                    utils::EIP1559_FEE_ESTIMATION_PAST_BLOCKS,
-                    BlockNumber::Latest,
-                    &[self.fee_history_percentile],
-                )
-                .await?;
-
-            let (max_fee_per_gas, max_priority_fee_per_gas) =
-                eip1559_fee_estimator_weighted_average(base_fee_per_gas, fee_history.reward);
-
-            inner_tx.max_fee_per_gas = Some(max_fee_per_gas);
-            inner_tx.max_priority_fee_per_gas = Some(max_priority_fee_per_gas);
-        }
-
-        let _ = self
-            .inner()
-            .fill_transaction(tx, block)
-            .await
-            .map_err(GasFeeMiddlewareError::MiddlewareError)?;
+        if let TypedTransaction::Eip1559(ref mut inner) = tx {
+                if inner.max_fee_per_gas.is_none() || inner.max_priority_fee_per_gas.is_none() {
+                    let (max_fee_per_gas, max_priority_fee_per_gas) =
+                        self.estimate_eip1559_fees(None).await?;
+                    // we want to avoid overriding the user if either of these
+                    // are set. In order to do this, we refuse to override the
+                    // `max_fee_per_gas` if already set.
+                    // However, we must preserve the constraint that the tip
+                    // cannot be higher than max fee, so we override user
+                    // intent if that is so. We override by
+                    //   - first: if set, set to the min(current value, MFPG)
+                    //   - second, if still unset, use the RPC estimated amount
+                    let mfpg = inner.max_fee_per_gas.get_or_insert(max_fee_per_gas);
+                    inner.max_priority_fee_per_gas = inner
+                        .max_priority_fee_per_gas
+                        .map(|tip| std::cmp::min(tip, *mfpg))
+                        .or(Some(max_priority_fee_per_gas));
+                };
+            };
 
         Ok(())
     }
