@@ -1,4 +1,4 @@
-use crate::transaction::{GasFeeSpeed, GasFeeMiddlewareError, GasFeeMiddleware};
+use crate::transaction::{GasFeeMiddleware, GasFeeMiddlewareError, GasFeeSpeed};
 use ethers::middleware::SignerMiddleware;
 use ethers::prelude::{Http, Provider};
 use ethers::signers::{HDPath, Ledger};
@@ -13,7 +13,7 @@ pub enum LedgerClientError {
     #[error("failed to instantiate Ledger middleware: {0}")]
     CreateLedgerClientMiddlewareError(String),
     #[error(transparent)]
-    GasFeeMiddlewareError(#[from] GasFeeMiddlewareError<Provider<Http>>)
+    GasFeeMiddlewareError(#[from] GasFeeMiddlewareError<Provider<Http>>),
 }
 
 pub struct LedgerClient {
