@@ -59,11 +59,17 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
 
         info!("Transaction submitted. Awaiting block confirmations...");
 
-        let tx_confirmation = pending_tx.confirmations(DEFAULT_CONFIRMATIONS as usize).await?;
+        let tx_confirmation = pending_tx
+            .confirmations(DEFAULT_CONFIRMATIONS as usize)
+            .await?;
 
         let tx_receipt = match tx_confirmation {
             Some(receipt) => receipt,
-            None => return Err(WritableClientError::<M, S>::WriteConfirmTxError(DEFAULT_CONFIRMATIONS)),
+            None => {
+                return Err(WritableClientError::<M, S>::WriteConfirmTxError(
+                    DEFAULT_CONFIRMATIONS,
+                ))
+            }
         };
 
         info!("Transaction Confirmed");
