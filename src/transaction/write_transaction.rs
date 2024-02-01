@@ -44,7 +44,7 @@ impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<
         }
     }
 
-    pub async fn execute(&mut self) -> Result<(), WritableClientError> {
+    pub async fn execute(&mut self) -> Result<(), WritableClientError<M, S>> {
         if let WriteTransactionStatus::PendingPrepare(parameters) = &self.status {
             self.update_status(WriteTransactionStatus::PendingPrepare(parameters.clone()));
         }
@@ -55,7 +55,7 @@ impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<
         Ok(())
     }
 
-    async fn prepare(&mut self) -> Result<(), WritableClientError> {
+    async fn prepare(&mut self) -> Result<(), WritableClientError<M, S>> {
         if let WriteTransactionStatus::PendingPrepare(parameters) = &self.status {
             let tx_request = self.client.prepare_request(*parameters.clone()).await?;
             self.update_status(WriteTransactionStatus::PendingSign(tx_request));
@@ -63,7 +63,7 @@ impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<
         Ok(())
     }
 
-    async fn sign(&mut self) -> Result<(), WritableClientError> {
+    async fn sign(&mut self) -> Result<(), WritableClientError<M, S>> {
         if let WriteTransactionStatus::PendingSign(tx_request) = &self.status {
             let signed_tx = self.client.sign_request(tx_request.clone()).await?;
             self.update_status(WriteTransactionStatus::PendingSend(signed_tx));
@@ -71,17 +71,13 @@ impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<
         Ok(())
     }
 
-    async fn send(&mut self) -> Result<(), WritableClientError> {
+    async fn send(&mut self) -> Result<(), WritableClientError<M, S>> {
         if let WriteTransactionStatus::PendingSend(signed_tx) = &self.status {
             let pending_tx = self.client.send_request(signed_tx.clone()).await?;
             let receipt = pending_tx
                 .confirmations(self.confirmations.into())
-                .await
-                .map_err(|e| WritableClientError::WriteConfirmationError(e.to_string()))?
-                .ok_or(WritableClientError::WriteConfirmationError(format!(
-                    "Transaction did not receive {} confirmations",
-                    self.confirmations,
-                )))?;
+                .await?
+                .ok_or(WritableClientError::WriteConfirmTxError(self.confirmations))?;
             self.update_status(WriteTransactionStatus::Confirmed(receipt));
         }
         Ok(())
