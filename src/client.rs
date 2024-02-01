@@ -1,8 +1,8 @@
-use ethers::middleware::{SignerMiddleware, gas_oracle::GasOracleMiddleware};
-use ethers::prelude::{Http, Provider, gas_oracle::ProviderOracle, signer::SignerMiddlewareError};
+use ethers::middleware::{gas_oracle::GasOracleMiddleware, SignerMiddleware};
+use ethers::prelude::{gas_oracle::ProviderOracle, signer::SignerMiddlewareError, Http, Provider};
 use ethers::signers::{HDPath, Ledger, LedgerError};
-use url::ParseError;
 use thiserror::Error;
+use url::ParseError;
 
 #[derive(Error, Debug)]
 pub enum LedgerClientError {
@@ -11,11 +11,20 @@ pub enum LedgerClientError {
     #[error(transparent)]
     UrlParserError(#[from] ParseError),
     #[error(transparent)]
-    SignerMiddlewareError(#[from] SignerMiddlewareError<Provider<Http>, Ledger>),
+    SignerMiddlewareError(
+        #[from]
+        SignerMiddlewareError<
+            GasOracleMiddleware<Provider<Http>, ProviderOracle<Provider<Http>>>,
+            Ledger,
+        >,
+    ),
 }
 
 pub struct LedgerClient {
-    pub client: GasOracleMiddleware<SignerMiddleware<Provider<Http>, Ledger>, ProviderOracle<Provider<Http>>>,
+    pub client: SignerMiddleware<
+        GasOracleMiddleware<Provider<Http>, ProviderOracle<Provider<Http>>>,
+        Ledger,
+    >,
 }
 
 impl LedgerClient {
@@ -30,9 +39,13 @@ impl LedgerClient {
         )
         .await?;
         let provider = Provider::<Http>::try_from(rpc_url.clone())?;
-        let signer = SignerMiddleware::new_with_provider_chain(provider.clone(), wallet)
-            .await?;
-        let client = GasOracleMiddleware::new(signer, ProviderOracle::new(provider));
+        let gas_oracle_middleware =
+            GasOracleMiddleware::new(provider.clone(), ProviderOracle::new(provider));
+        let client = SignerMiddleware::<
+            GasOracleMiddleware<Provider<Http>, ProviderOracle<Provider<Http>>>,
+            Ledger,
+        >::new_with_provider_chain(gas_oracle_middleware, wallet)
+        .await?;
         Ok(Self { client })
     }
 }

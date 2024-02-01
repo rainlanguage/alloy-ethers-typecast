@@ -1,5 +1,8 @@
 use alloy_sol_types::SolCall;
 use ethers::middleware::SignerMiddleware;
+use ethers::prelude::{
+    gas_oracle::GasOracleMiddleware, gas_oracle::ProviderOracle, Http, Provider,
+};
 use ethers::providers::Middleware;
 use ethers::signers::Signer;
 use ethers::types::transaction::eip2718::TypedTransaction;
@@ -31,7 +34,7 @@ impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<
     WriteTransaction<M, S, C, F>
 {
     pub fn new(
-        client: SignerMiddleware<M, S>,
+        client: SignerMiddleware<GasOracleMiddleware<M, ProviderOracle<Provider<Http>>>, S>,
         parameters: WriteContractParameters<C>,
         confirmations: u8,
         status_changed: F,
@@ -142,7 +145,9 @@ mod tests {
         mock_middleware.assert_next_to(H160::repeat_byte(0x22));
 
         // Finally create a client SignerMiddleware instance
-        let client = SignerMiddleware::new(mock_middleware, wallet);
+        let gas_oracle_middleware =
+            GasOracleMiddleware::new(mock_middleware.clone(), ProviderOracle::new(provider));
+        let client = SignerMiddleware::new(gas_oracle_middleware, wallet);
 
         // Create a WritableClient instance with the mock client
         WriteTransaction::new(client, parameters, 4, |_| {})

@@ -3,6 +3,10 @@ use alloy_primitives::{Address, U256};
 use alloy_sol_types::SolCall;
 use derive_builder::Builder;
 use ethers::middleware::SignerMiddleware;
+use ethers::prelude::gas_oracle::GasOracleMiddleware;
+use ethers::prelude::gas_oracle::ProviderOracle;
+use ethers::prelude::Http;
+use ethers::prelude::Provider;
 use ethers::providers::{Middleware, PendingTransaction};
 use ethers::signers::Signer;
 use ethers::types::transaction::eip2718::TypedTransaction;
@@ -42,12 +46,16 @@ pub struct WriteContractParameters<C: SolCall> {
     #[builder(setter(into), default)]
     pub value: Option<U256>,
 }
-#[derive(Clone)]
-pub struct WritableClient<M: Middleware, S: Signer>(SignerMiddleware<M, S>);
+
+pub struct WritableClient<M: Middleware, S: Signer>(
+    SignerMiddleware<GasOracleMiddleware<M, ProviderOracle<Provider<Http>>>, S>,
+);
 
 impl<M: Middleware, S: Signer> WritableClient<M, S> {
     // Create a new WriteContract instance, passing a client
-    pub fn new(client: SignerMiddleware<M, S>) -> Self {
+    pub fn new(
+        client: SignerMiddleware<GasOracleMiddleware<M, ProviderOracle<Provider<Http>>>, S>,
+    ) -> Self {
         Self(client)
     }
 
@@ -233,7 +241,10 @@ mod tests {
         mock_middleware.assert_next_to(H160::repeat_byte(0x22));
 
         // Finally create a client SignerMiddleware instance
-        let client = SignerMiddleware::new(mock_middleware, wallet);
+        
+        let gas_oracle_middleware =
+            GasOracleMiddleware::new(mock_middleware.clone(), ProviderOracle::new(provider));
+        let client = SignerMiddleware::new(gas_oracle_middleware, wallet);
 
         // Create a WritableClient instance with the mock client
         let writable_client = WritableClient::new(client);
