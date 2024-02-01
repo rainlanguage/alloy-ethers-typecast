@@ -3,9 +3,9 @@ use ethers::core::types::{transaction::eip2718::TypedTransaction, BlockId};
 use ethers::providers::{Middleware, MiddlewareError, ProviderError};
 use ethers::types::BlockNumber;
 use ethers::utils;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use serde::{Serialize, Deserialize};
-use tracing::debug;
+
 
 const EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_SLOW: f64 = 25.0;
 const EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_MEDIUM: f64 = 50.0;
@@ -41,6 +41,9 @@ pub enum GasFeeMiddlewareError<M: Middleware> {
 
     #[error(transparent)]
     ProviderError(#[from] ProviderError),
+
+    #[error("Provided GasFeeSpeed is invalid")]
+    InvalidGasFeeSpeed,
 }
 
 impl<M: Middleware> MiddlewareError for GasFeeMiddlewareError<M> {
@@ -62,11 +65,14 @@ impl<M> GasFeeMiddleware<M>
 where
     M: Middleware,
 {
-    pub fn new(inner: M, speed: GasFeeSpeed) -> Self {
-        Self {
+    pub fn new(inner: M, speed: GasFeeSpeed) -> Result<Self, GasFeeMiddlewareError<M>> {
+        let percentiles_vec = EIP1559_FEE_ESTIMATION_REWARD_PERCENTILES.clone().to_vec();
+        let fee_history_percentile = percentiles_vec.get(speed as usize).ok_or(GasFeeMiddlewareError::InvalidGasFeeSpeed)?;
+        
+        Ok(Self {
             inner,
-            fee_history_percentile: EIP1559_FEE_ESTIMATION_REWARD_PERCENTILES[speed as usize],
-        }
+            fee_history_percentile: *fee_history_percentile
+        })
     }
 }
 

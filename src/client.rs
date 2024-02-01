@@ -1,5 +1,4 @@
-use crate::transaction::gas_fee_middleware::GasFeeSpeed;
-use crate::transaction::GasFeeMiddleware;
+use crate::transaction::{GasFeeSpeed, GasFeeMiddlewareError, GasFeeMiddleware};
 use ethers::middleware::SignerMiddleware;
 use ethers::prelude::{Http, Provider};
 use ethers::signers::{HDPath, Ledger};
@@ -13,6 +12,8 @@ pub enum LedgerClientError {
     CreateLedgerClientDeviceError(String),
     #[error("failed to instantiate Ledger middleware: {0}")]
     CreateLedgerClientMiddlewareError(String),
+    #[error(transparent)]
+    GasFeeMiddlewareError(#[from] GasFeeMiddlewareError<Provider<Http>>)
 }
 
 pub struct LedgerClient {
@@ -34,7 +35,7 @@ impl LedgerClient {
         .map_err(|err| LedgerClientError::CreateLedgerClientDeviceError(err.to_string()))?;
         let provider = Provider::<Http>::try_from(rpc_url.clone())
             .map_err(|err| LedgerClientError::CreateLedgerClientProviderError(err.to_string()))?;
-        let gas_fee_middleware = GasFeeMiddleware::new(provider, gas_fee_speed);
+        let gas_fee_middleware = GasFeeMiddleware::new(provider, gas_fee_speed)?;
         let client = SignerMiddleware::new_with_provider_chain(gas_fee_middleware, wallet)
             .await
             .map_err(|err| LedgerClientError::CreateLedgerClientMiddlewareError(err.to_string()))?;
