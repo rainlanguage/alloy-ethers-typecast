@@ -6,7 +6,6 @@ use ethers::utils;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-
 const EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_SLOW: f64 = 25.0;
 const EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_MEDIUM: f64 = 50.0;
 const EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_FAST: f64 = 75.0;
@@ -67,11 +66,13 @@ where
 {
     pub fn new(inner: M, speed: GasFeeSpeed) -> Result<Self, GasFeeMiddlewareError<M>> {
         let percentiles_vec = EIP1559_FEE_ESTIMATION_REWARD_PERCENTILES.clone().to_vec();
-        let fee_history_percentile = percentiles_vec.get(speed as usize).ok_or(GasFeeMiddlewareError::InvalidGasFeeSpeed)?;
-        
+        let fee_history_percentile = percentiles_vec
+            .get(speed as usize)
+            .ok_or(GasFeeMiddlewareError::InvalidGasFeeSpeed)?;
+
         Ok(Self {
             inner,
-            fee_history_percentile: *fee_history_percentile
+            fee_history_percentile: *fee_history_percentile,
         })
     }
 }
