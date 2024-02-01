@@ -1,23 +1,26 @@
 use crate::transaction::{GasFeeMiddleware, GasFeeMiddlewareError, GasFeeSpeed};
-use ethers::middleware::SignerMiddleware;
-use ethers::prelude::{Http, Provider};
-use ethers::signers::{HDPath, Ledger};
+use ethers::middleware::{NonceManagerMiddleware, SignerMiddleware};
+use ethers::prelude::{signer::SignerMiddlewareError, Http, Provider};
+use ethers::signers::{HDPath, Ledger, LedgerError};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum LedgerClientError {
-    #[error("failed to instantiate provider: {0}")]
-    CreateLedgerClientProviderError(String),
-    #[error("failed to instantiate Ledger device: {0}")]
-    CreateLedgerClientDeviceError(String),
-    #[error("failed to instantiate Ledger middleware: {0}")]
-    CreateLedgerClientMiddlewareError(String),
+    #[error(transparent)]
+    URLParserError(#[from] url::ParseError),
+    #[error(transparent)]
+    LedgerError(#[from] LedgerError),
+    #[error(transparent)]
+    SignerMiddlewareError(
+        #[from]
+        SignerMiddlewareError<NonceManagerMiddleware<GasFeeMiddleware<Provider<Http>>>, Ledger>,
+    ),
     #[error(transparent)]
     GasFeeMiddlewareError(#[from] GasFeeMiddlewareError<Provider<Http>>),
 }
 
 pub struct LedgerClient {
-    pub client: SignerMiddleware<GasFeeMiddleware<Provider<Http>>, Ledger>,
+    pub client: SignerMiddleware<NonceManagerMiddleware<GasFeeMiddleware<Provider<Http>>>, Ledger>,
 }
 
 impl LedgerClient {
@@ -31,14 +34,14 @@ impl LedgerClient {
             HDPath::LedgerLive(ledger_derivation_path.unwrap_or(0)),
             chain_id,
         )
-        .await
-        .map_err(|err| LedgerClientError::CreateLedgerClientDeviceError(err.to_string()))?;
-        let provider = Provider::<Http>::try_from(rpc_url.clone())
-            .map_err(|err| LedgerClientError::CreateLedgerClientProviderError(err.to_string()))?;
+        .await?;
+        let address = wallet.get_address().await?;
+
+        let provider = Provider::<Http>::try_from(rpc_url.clone())?;
         let gas_fee_middleware = GasFeeMiddleware::new(provider, gas_fee_speed)?;
-        let client = SignerMiddleware::new_with_provider_chain(gas_fee_middleware, wallet)
-            .await
-            .map_err(|err| LedgerClientError::CreateLedgerClientMiddlewareError(err.to_string()))?;
+        let nonce_middleware = NonceManagerMiddleware::new(gas_fee_middleware, address);
+        let client = SignerMiddleware::new_with_provider_chain(nonce_middleware, wallet).await?;
+
         Ok(Self { client })
     }
 }
