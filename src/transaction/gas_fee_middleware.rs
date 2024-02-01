@@ -10,13 +10,13 @@ use tracing::debug;
 const EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_SLOW: f64 = 25.0;
 const EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_MEDIUM: f64 = 50.0;
 const EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_FAST: f64 = 75.0;
-const EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_INSTANT: f64 = 90.0;
+const EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_FASTEST: f64 = 90.0;
 
 const EIP1559_FEE_ESTIMATION_REWARD_PERCENTILES: [f64; 4] = [
     EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_SLOW,
     EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_MEDIUM,
     EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_FAST,
-    EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_INSTANT,
+    EIP1559_FEE_ESTIMATION_REWARD_PERCENTILE_FASTEST,
 ];
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -25,7 +25,7 @@ pub enum GasFeeSpeed {
     Slow,
     Medium,
     Fast,
-    Instant,
+    Fastest,
 }
 
 #[derive(Debug)]
@@ -84,8 +84,8 @@ where
     }
 
     /// Override the fill_transaction function with our own gas fee estimation.
-    /// Specify a fee percentile for the eth_feeHistory call, based on the desired transaction speed GasFeeSpeed.
-    /// Then use the default ethers estimator function to calculate a max fee and max priority fee from the history.
+    /// Specify a fee percentile for the eth_feeHistory call, based on a desired transaction speed.
+    /// Then use the default ethers-rs estimator function to calculate a max fee and max priority fee from that data.
     async fn fill_transaction(
         &self,
         tx: &mut TypedTransaction,
@@ -106,12 +106,9 @@ where
                     &[self.fee_history_percentile],
                 )
                 .await?;
-            
-            debug!("Fee history at {} percentile: {:?}", self.fee_history_percentile, fee_history);
 
             let (max_fee_per_gas, max_priority_fee_per_gas) =
                 utils::eip1559_default_estimator(base_fee_per_gas, fee_history.reward);
-            debug!("Estimator results: max_fee_per_gas={}, max_priority_fee_per_gas={}", max_fee_per_gas, max_priority_fee_per_gas);
 
             inner_tx.max_fee_per_gas = Some(max_fee_per_gas);
             inner_tx.max_priority_fee_per_gas = Some(max_priority_fee_per_gas);
