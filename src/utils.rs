@@ -11,9 +11,6 @@ pub fn eip1559_fee_estimator(base_fee_per_gas: U256, tips_history: Vec<Vec<U256>
         .unwrap_or(*tips_history_flat.last().unwrap_or(&U256::from(50)));
     let max_fee_per_gas = base_fee_per_gas + max_priority_fee_per_gas;
 
-    debug!("max_fee_per_gas {:?}", max_fee_per_gas);
-    debug!("max_priority_fee_per_gas {:?}", max_priority_fee_per_gas);
-
     (max_fee_per_gas, max_priority_fee_per_gas)
 }
 
@@ -32,12 +29,8 @@ fn checked_average(numbers: Vec<U256>) -> Result<U256, CheckedAverageError> {
             .checked_add(U512::from(n))
             .ok_or(CheckedAverageError::Overflow)?;
     }
-    debug!("Calculated total {:?}", total);
-    debug!("Length {:?}", numbers.len());
-
     let average =
         U256::try_from(total.div(numbers.len())).map_err(|_| CheckedAverageError::TryFromU512)?;
-    debug!("Calculated average {:?}", average);
 
     Ok(average)
 }
