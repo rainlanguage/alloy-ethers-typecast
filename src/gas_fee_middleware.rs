@@ -2,7 +2,7 @@ use crate::utils::eip1559_fee_estimator;
 use async_trait::async_trait;
 use ethers::core::types::{transaction::eip2718::TypedTransaction, BlockId};
 use ethers::providers::{Middleware, MiddlewareError, ProviderError};
-use ethers::types::{U256, BlockNumber};
+use ethers::types::{BlockNumber, U256};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -88,8 +88,8 @@ where
     }
 
     /// Overrides the fill_transaction fn so txs succeed by default,
-    /// and validation speed can be easily adjusted. 
-    /// The max_priority_fee_per_gas is set by taking the average of 
+    /// and validation speed can be easily adjusted.
+    /// The max_priority_fee_per_gas is set by taking the average of
     /// the past 10 blocks' priority fees paid at a given percentile.
     /// The percentile is specified in the human-readable GasFeeSpeed property.
     async fn fill_transaction(
