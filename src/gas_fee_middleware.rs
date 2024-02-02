@@ -1,12 +1,10 @@
 use crate::utils::eip1559_fee_estimator;
 use async_trait::async_trait;
 use ethers::core::types::{transaction::eip2718::TypedTransaction, BlockId};
-
 use ethers::providers::{Middleware, MiddlewareError, ProviderError};
-use ethers::types::BlockNumber;
+use ethers::types::{U256, BlockNumber};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-
 
 const GAS_FEE_SPEED_DEFAULT: GasFeeSpeed = GasFeeSpeed::Medium;
 
@@ -89,6 +87,11 @@ where
         &self.inner
     }
 
+    /// Overrides the fill_transaction fn so txs succeed by default,
+    /// and validation speed can be easily adjusted. 
+    /// The max_priority_fee_per_gas is set by taking the average of 
+    /// the past 10 blocks' priority fees paid at a given percentile.
+    /// The percentile is specified in the human-readable GasFeeSpeed property.
     async fn fill_transaction(
         &self,
         tx: &mut TypedTransaction,
@@ -115,9 +118,11 @@ where
                         &[reward_history_percentile],
                     )
                     .await?;
+                let reward_history_flat: Vec<U256> =
+                    fee_history.reward.clone().into_iter().flatten().collect();
 
                 let (max_fee_per_gas, max_priority_fee_per_gas) =
-                    eip1559_fee_estimator(base_fee_per_gas, fee_history.reward);
+                    eip1559_fee_estimator(base_fee_per_gas, reward_history_flat);
                 inner.max_priority_fee_per_gas = Some(max_priority_fee_per_gas);
                 inner.max_fee_per_gas = Some(max_fee_per_gas);
             };

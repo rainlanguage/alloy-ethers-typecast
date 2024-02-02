@@ -1,14 +1,11 @@
 use ethers::types::{U256, U512};
 use std::ops::Div;
 use thiserror::Error;
-use tracing::debug;
 
-/// EIP-1559 fee estimator that takes the mean of rewards paid in the past
-/// This can be plugged into ethers estimator function
-pub fn eip1559_fee_estimator(base_fee_per_gas: U256, tips_history: Vec<Vec<U256>>) -> (U256, U256) {
-    let tips_history_flat: Vec<U256> = tips_history.clone().into_iter().flatten().collect();
-    let max_priority_fee_per_gas = checked_average(tips_history_flat.clone())
-        .unwrap_or(*tips_history_flat.last().unwrap_or(&U256::from(50)));
+/// Determine EIP1559 fees from a base fee and an array of rewards paid in past blocks
+pub fn eip1559_fee_estimator(base_fee_per_gas: U256, rewards_history: Vec<U256>) -> (U256, U256) {
+    let max_priority_fee_per_gas = checked_average(rewards_history.clone())
+        .unwrap_or(*rewards_history.last().unwrap_or(&U256::from(50)));
     let max_fee_per_gas = base_fee_per_gas + max_priority_fee_per_gas;
 
     (max_fee_per_gas, max_priority_fee_per_gas)
