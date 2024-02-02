@@ -40,10 +40,8 @@ pub struct GasFeeMiddleware<M> {
 pub enum GasFeeMiddlewareError<M: Middleware> {
     #[error("{0}")]
     MiddlewareError(M::Error),
-
     #[error(transparent)]
     ProviderError(#[from] ProviderError),
-
     #[error("Provided GasFeeSpeed is invalid")]
     InvalidGasFeeSpeed,
 }
