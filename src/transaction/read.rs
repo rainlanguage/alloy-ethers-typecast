@@ -17,6 +17,8 @@ pub enum ReadableClientError {
     ReadDecodeReturnError(String),
     #[error("failed to get chain id: {0}")]
     ReadChainIdError(String),
+    #[error("failed to get block number: {0}")]
+    ReadBlockNumberError(String),
 }
 
 #[derive(Builder)]
@@ -84,6 +86,16 @@ impl<P: JsonRpcClient> ReadableClient<P> {
             .map_err(|err| ReadableClientError::ReadChainIdError(err.to_string()))?;
 
         Ok(ethers_u256_to_alloy(chainid))
+    }
+
+    pub async fn get_block_number(&self) -> Result<u64, ReadableClientError> {
+        let block_number = self
+            .0
+            .get_block_number()
+            .await
+            .map_err(|err| ReadableClientError::ReadBlockNumberError(err.to_string()))?;
+
+        Ok(block_number.as_u64())
     }
 }
 
@@ -198,6 +210,30 @@ mod tests {
         let res = read_contract.get_chainid().await.unwrap();
 
         assert_eq!(res, U256::from(5));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_block_number() -> anyhow::Result<()> {
+        // Create a mock Provider
+        let mock_provider = MockProvider::new();
+
+        // Create a mock response
+        let foo_response =
+            json!("0x0000006");
+
+        let mock_response = MockResponse::Value(foo_response);
+        mock_provider.push_response(mock_response);
+
+        // Create a Provider instance with the mock provider
+        let client = Provider::new(mock_provider);
+
+        // Create a ReadableClient instance with the mock provider
+        let read_contract = ReadableClient::new(client);
+        let res = read_contract.get_block_number().await.unwrap();
+
+        assert_eq!(res, 6_u64);
 
         Ok(())
     }
