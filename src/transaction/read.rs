@@ -220,8 +220,7 @@ mod tests {
         let mock_provider = MockProvider::new();
 
         // Create a mock response
-        let foo_response =
-            json!("0x0000006");
+        let foo_response = json!("0x0000006");
 
         let mock_response = MockResponse::Value(foo_response);
         mock_provider.push_response(mock_response);
