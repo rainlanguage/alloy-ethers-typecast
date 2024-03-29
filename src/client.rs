@@ -4,8 +4,8 @@ use alloy_primitives::Address;
 use ethers::middleware::SignerMiddleware;
 use ethers::prelude::{Http, Provider};
 use ethers::signers::{Ledger, LedgerError};
-use std::iter::zip;
-use std::ops::Range;
+
+
 use thiserror::Error;
 
 pub use ethers::signers::HDPath;
