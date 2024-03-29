@@ -5,8 +5,8 @@ use ethers::middleware::SignerMiddleware;
 use ethers::prelude::{Http, Provider};
 use ethers::signers::{HDPath, Ledger, LedgerError};
 use std::iter::zip;
-use thiserror::Error;
 use std::ops::Range;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum LedgerClientError {
@@ -67,12 +67,8 @@ impl LedgerClient {
 
         // Prepare list of derivation paths for given indexes & type
         let derivations: Vec<HDPath> = match derivation_path_type {
-            DerivationPathType::LedgerLive => index_range.clone()
-                .map(HDPath::LedgerLive)
-                .collect(),
-            DerivationPathType::Legacy => index_range.clone()
-                .map(HDPath::Legacy)
-                .collect(),
+            DerivationPathType::LedgerLive => index_range.clone().map(HDPath::LedgerLive).collect(),
+            DerivationPathType::Legacy => index_range.clone().map(HDPath::Legacy).collect(),
         };
 
         // Get address for each derivation index
