@@ -61,7 +61,7 @@ impl LedgerClient {
     ) -> Result<Address, LedgerClientError> {
         let wallet = Self::init_ledger(None, chain_id).await?;
         let address = wallet.get_address_with_path(&derivation).await?;
-        wallet.close();
-        Ok(ethers_address_to_alloy(address))
+        let address_alloy = ethers_address_to_alloy(address);
+        Ok(address_alloy)
     }
 }
