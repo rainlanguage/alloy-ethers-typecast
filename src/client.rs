@@ -3,7 +3,7 @@ use crate::gas_fee_middleware::{GasFeeMiddleware, GasFeeMiddlewareError, GasFeeS
 use alloy_primitives::Address;
 use ethers::middleware::SignerMiddleware;
 use ethers::prelude::{Http, Provider};
-use ethers::signers::{ Ledger, LedgerError};
+use ethers::signers::{Ledger, LedgerError};
 use std::iter::zip;
 use std::ops::Range;
 use thiserror::Error;
