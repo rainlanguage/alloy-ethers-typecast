@@ -24,11 +24,6 @@ pub enum LedgerClientError {
     LedgerError(#[from] LedgerError),
 }
 
-pub enum DerivationPathType {
-    LedgerLive,
-    Legacy,
-}
-
 pub struct LedgerClient {
     pub client: SignerMiddleware<GasFeeMiddleware<Provider<Http>>, Ledger>,
 }
@@ -59,29 +54,13 @@ impl LedgerClient {
         Ok(Self { client })
     }
 
-    /// List all addresses derived from a range of derivation indexes for a given derivation path type
-    pub async fn list_derivation_addresses(
+    /// Get an addresses derived a derivation path
+    pub async fn get_derivation_address(
         chain_id: u64,
-        derivation_path_type: DerivationPathType,
-        index_range: Range<usize>,
-    ) -> Result<Vec<(Address, usize)>, LedgerClientError> {
+        derivation: HDPath,
+    ) -> Result<Address, LedgerClientError> {
         let wallet = Self::init_ledger(None, chain_id).await?;
-
-        // Prepare list of derivation paths for given indexes & type
-        let derivations: Vec<HDPath> = match derivation_path_type {
-            DerivationPathType::LedgerLive => index_range.clone().map(HDPath::LedgerLive).collect(),
-            DerivationPathType::Legacy => index_range.clone().map(HDPath::Legacy).collect(),
-        };
-
-        // Get address for each derivation index
-        let mut all_addresses: Vec<Address> = vec![];
-        for derivation in derivations {
-            let address = wallet.get_address_with_path(&derivation).await?;
-            all_addresses.push(ethers_address_to_alloy(address));
-        }
-
-        // Zip lists of addresses & indexes
-        let all_indexes: Vec<usize> = index_range.collect();
-        Ok(zip(all_addresses, all_indexes).collect())
+        let address = wallet.get_address_with_path(&derivation).await?;
+        Ok(ethers_address_to_alloy(address))
     }
 }
