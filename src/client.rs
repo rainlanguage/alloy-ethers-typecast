@@ -5,7 +5,6 @@ use ethers::middleware::SignerMiddleware;
 use ethers::prelude::{Http, Provider};
 use ethers::signers::{Ledger, LedgerError};
 
-
 use thiserror::Error;
 
 pub use ethers::signers::HDPath;
@@ -54,7 +53,7 @@ impl LedgerClient {
         Ok(Self { client })
     }
 
-    /// Get an addresses derived a derivation path
+    /// Get an address from a derivation
     pub async fn get_derivation_address(
         chain_id: u64,
         derivation: HDPath,
