@@ -3,7 +3,7 @@ use crate::{alloy_u64_to_ethers, ethers_u256_to_alloy};
 use alloy_primitives::{Address, U256, U64};
 use alloy_sol_types::SolCall;
 use derive_builder::Builder;
-use ethers::providers::{Http, JsonRpcClient, Middleware, Provider};
+use ethers::providers::{Http, JsonRpcClient, Middleware, Provider, ProviderError};
 use ethers::types::transaction::eip2718::TypedTransaction;
 use thiserror::Error;
 
@@ -11,8 +11,8 @@ use thiserror::Error;
 pub enum ReadableClientError {
     #[error("failed to instantiate provider: {0}")]
     CreateReadableClientHttpError(String),
-    #[error("failed to read call: {0}")]
-    ReadCallError(String),
+    #[error(transparent)]
+    ReadCallError(ProviderError),
     #[error("failed to decode return: {0}")]
     ReadDecodeReturnError(String),
     #[error("failed to get chain id: {0}")]
@@ -70,7 +70,7 @@ impl<P: JsonRpcClient> ReadableClient<P> {
                 }),
             )
             .await
-            .map_err(|err| ReadableClientError::ReadCallError(err.to_string()))?;
+            .map_err(|err| ReadableClientError::ReadCallError(err))?;
 
         let return_typed = C::abi_decode_returns(res.to_vec().as_slice(), true)
             .map_err(|err| ReadableClientError::ReadDecodeReturnError(err.to_string()))?;
