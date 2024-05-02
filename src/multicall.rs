@@ -10,8 +10,9 @@ use thiserror::Error;
 /// see: https://www.multicall3.com/deployments
 pub const MULTICALL3_ADDRESS: &str = "0xcA11bde05977b3631167028862bE2a173976CA11";
 
-// IMulticall3 contract interface
 sol! {
+    /// IMulticall3 contract interface
+    /// see: https://www.multicall3.com/abi
     interface IMulticall3 {
         struct Call {
             address target;
