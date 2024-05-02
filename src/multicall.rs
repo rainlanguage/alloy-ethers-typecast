@@ -10,62 +10,8 @@ use thiserror::Error;
 /// see: https://www.multicall3.com/deployments
 pub const MULTICALL3_ADDRESS: &str = "0xcA11bde05977b3631167028862bE2a173976CA11";
 
-sol! {
-    /// IMulticall3 contract interface
-    /// see: https://www.multicall3.com/abi
-    interface IMulticall3 {
-        struct Call {
-            address target;
-            bytes callData;
-        }
-        struct Call3 {
-            address target;
-            bool allowFailure;
-            bytes callData;
-        }
-        struct Call3Value {
-            address target;
-            bool allowFailure;
-            uint256 value;
-            bytes callData;
-        }
-        struct Result {
-            bool success;
-            bytes returnData;
-        }
-        function getBasefee() external view returns (uint256 basefee);
-        function getBlockHash(uint256 blockNumber) external view returns (bytes32 blockHash);
-        function getBlockNumber() external view returns (uint256 blockNumber);
-        function getChainId() external view returns (uint256 chainid);
-        function getCurrentBlockCoinbase() external view returns (address coinbase);
-        function getCurrentBlockDifficulty() external view returns (uint256 difficulty);
-        function getCurrentBlockGasLimit() external view returns (uint256 gaslimit);
-        function getCurrentBlockTimestamp() external view returns (uint256 timestamp);
-        function getEthBalance(address addr) external view returns (uint256 balance);
-        function getLastBlockHash() external view returns (bytes32 blockHash);
-        function aggregate3(Call3[] calldata calls) external payable returns (Result[] memory returnData);
-        function aggregate(Call[] calldata calls)
-            external
-            payable
-            returns (uint256 blockNumber, bytes[] memory returnData);
-        function aggregate3Value(Call3Value[] calldata calls)
-            external
-            payable
-            returns (Result[] memory returnData);
-        function blockAndAggregate(Call[] calldata calls)
-            external
-            payable
-            returns (uint256 blockNumber, bytes32 blockHash, Result[] memory returnData);
-        function tryAggregate(bool requireSuccess, Call[] calldata calls)
-            external
-            payable
-            returns (Result[] memory returnData);
-        function tryBlockAndAggregate(bool requireSuccess, Call[] calldata calls)
-            external
-            payable
-            returns (uint256 blockNumber, bytes32 blockHash, Result[] memory returnData);
-        }
-}
+// IMutlicall3 interface
+sol!( "./contracts/IMulticall3.sol" );
 
 #[derive(Error, Debug)]
 pub enum MulticallError {
@@ -156,6 +102,39 @@ impl<T: SolCall> Multicall<T> {
 mod tests {
     use super::*;
 
+    // rpc url from env
+    pub const TEST_POLYGON_RPC: &str = env!(
+        "TEST_POLYGON_RPC",
+        "$TEST_POLYGON_RPC not set."
+    );
+
+    #[test]
+    fn clear_calls_test() -> anyhow::Result<()> {
+        sol! {
+            function symbol() public view returns (string memory);
+        }
+        let mut multicall = Multicall::default();
+
+        let dai = Address::from_hex("0x8f3cf7ad23cd3cadbd9735aff958023239c6a063")?;
+        let dai_symbol_call = MulticallCallItem {
+            address: dai,
+            call: symbolCall {},
+        };
+        multicall.add_call(dai_symbol_call);
+
+        let usdc = Address::from_hex("0x2791bca1f2de4661ed88a30c99a7a9449aa84174")?;
+        let usdc_symbol_call = MulticallCallItem {
+            address: usdc,
+            call: symbolCall {},
+        };
+        multicall.add_call(usdc_symbol_call);
+
+        multicall.clear_calls();
+        assert!(multicall.calls.is_empty());
+
+        Ok(())
+    }
+
     #[tokio::test]
     async fn test_multicall_read() -> anyhow::Result<()> {
         sol! {
@@ -177,7 +156,7 @@ mod tests {
         };
         multicall.add_call(usdc_symbol_call);
 
-        let provider = ReadableClient::new_from_url("https://rpc.ankr.com/polygon".to_owned())?;
+        let provider = ReadableClient::new_from_url(TEST_POLYGON_RPC.to_owned())?;
         let result = multicall.read(provider, None, None).await?;
         let mut result_symbols = vec![];
         for res in result {
