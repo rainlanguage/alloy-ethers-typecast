@@ -95,13 +95,11 @@ impl<T: SolCall> Multicall<T> {
             .returnData
             .iter()
             .map(|v| {
-                if v.success {
-                    Ok(T::abi_decode_returns(&v.returnData, true).map_err(Into::into))
-                } else {
-                    Err(MulticallError::MulticallCallItemFailed(
+                v.success
+                    .then(|| Ok(T::abi_decode_returns(&v.returnData, true).map_err(Into::into)))
+                    .unwrap_or(Err(MulticallError::MulticallCallItemFailed(
                         v.returnData.clone(),
-                    ))
-                }
+                    )))
             })
             .collect::<Vec<Result<Result<T::Return, MulticallError>, MulticallError>>>())
     }
