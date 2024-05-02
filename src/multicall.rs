@@ -102,9 +102,6 @@ impl<T: SolCall> Multicall<T> {
 mod tests {
     use super::*;
 
-    // rpc url from env
-    pub const TEST_POLYGON_RPC: &str = env!("TEST_POLYGON_RPC", "$TEST_POLYGON_RPC not set.");
-
     #[test]
     fn clear_calls_test() -> anyhow::Result<()> {
         sol! {
@@ -153,7 +150,8 @@ mod tests {
         };
         multicall.add_call(usdc_symbol_call);
 
-        let provider = ReadableClient::new_from_url(TEST_POLYGON_RPC.to_owned())?;
+        let rpc_url = std::env::var("TEST_POLYGON_RPC")?;
+        let provider = ReadableClient::new_from_url(rpc_url)?;
         let result = multicall.read(provider, None, None).await?;
         let mut result_symbols = vec![];
         for res in result {
