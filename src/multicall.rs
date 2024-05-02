@@ -11,7 +11,7 @@ use thiserror::Error;
 pub const MULTICALL3_ADDRESS: &str = "0xcA11bde05977b3631167028862bE2a173976CA11";
 
 // IMutlicall3 interface
-sol!( "./contracts/IMulticall3.sol" );
+sol!("./contracts/IMulticall3.sol");
 
 #[derive(Error, Debug)]
 pub enum MulticallError {
@@ -103,10 +103,7 @@ mod tests {
     use super::*;
 
     // rpc url from env
-    pub const TEST_POLYGON_RPC: &str = env!(
-        "TEST_POLYGON_RPC",
-        "$TEST_POLYGON_RPC not set."
-    );
+    pub const TEST_POLYGON_RPC: &str = env!("TEST_POLYGON_RPC", "$TEST_POLYGON_RPC not set.");
 
     #[test]
     fn clear_calls_test() -> anyhow::Result<()> {
