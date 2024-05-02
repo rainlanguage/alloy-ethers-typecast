@@ -1,3 +1,4 @@
+pub mod error;
 mod mock_middleware;
 pub mod read;
 pub mod write;
