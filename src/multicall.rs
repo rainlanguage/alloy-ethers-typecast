@@ -61,10 +61,10 @@ impl<T: SolCall> Multicall<T> {
         self
     }
 
-    /// Executes the read call using the provided JsonRpcClient with the calls
-    /// already added to the list, the Multicall3 address on all chains is the
-    /// same, except a few that have unofficial deployments such as zkSynEra,
-    /// so the default Multicall3 address can be overriden in the args
+    /// Executes the read call through the given JsonRpcClient provider with the
+    /// calls already added to the list, the Multicall3 address on all chains is
+    /// the same, except a few that have unofficial deployments such as zkSynEra,
+    /// in such cases the default Multicall3 address can be overriden in the args
     pub async fn read(
         &self,
         provider: &ReadableClient<impl JsonRpcClient>,
