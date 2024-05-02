@@ -4,15 +4,19 @@ use alloy_sol_types::{sol, SolCall};
 use ethers::providers::JsonRpcClient;
 use thiserror::Error;
 
-/// Multicall3 contract address on all supported chains
-/// safe to say Multicall3 is deployed at this address on all major evm chains,
-/// except a few handful of chains, notably zkSyncEra, Tron, and few testnets
+/// Multicall3 contract address on all supported chains.
+/// It's safe to say Multicall3 is deployed at this address on all major evm
+/// chains, except a few handful of chains, notably zkSyncEra, Tron, and few
+/// testnets.
+///
 /// see: https://www.multicall3.com/deployments
 pub const MULTICALL3_ADDRESS: &str = "0xcA11bde05977b3631167028862bE2a173976CA11";
 
 // IMutlicall3 interface
+// see: https://www.multicall3.com/abi
 sol!("./contracts/IMulticall3.sol");
 
+/// includes all possible errors for Multicall struct methods
 #[derive(Error, Debug)]
 pub enum MulticallError {
     #[error(transparent)]
@@ -21,8 +25,8 @@ pub enum MulticallError {
     #[error(transparent)]
     AlloySolTypesError(#[from] alloy_sol_types::Error),
 
-    #[error("Multicall item failed")]
-    MulticallItemFailed(Vec<u8>),
+    #[error("Multicall call item failed")]
+    MulticallCallItemFailed(Vec<u8>),
 }
 
 /// A single Multicall call item typed with alloy SollCal
@@ -46,13 +50,15 @@ impl<T: SolCall> Default for Multicall<T> {
 
 impl<T: SolCall> Multicall<T> {
     /// adds a single call to the list of multicall calls
-    pub fn add_call(&mut self, call: MulticallCallItem<T>) {
+    pub fn add_call(&mut self, call: MulticallCallItem<T>) -> &mut Self {
         self.calls.push(call);
+        self
     }
 
     /// clears the calls list
-    pub fn clear_calls(&mut self) {
+    pub fn clear_calls(&mut self) -> &mut Self {
         self.calls.clear();
+        self
     }
 
     /// executes the read call using the provided JsonRpcClient with the calls already added to the list
@@ -91,7 +97,9 @@ impl<T: SolCall> Multicall<T> {
                 if v.success {
                     Ok(T::abi_decode_returns(&v.returnData, true).map_err(Into::into))
                 } else {
-                    Err(MulticallError::MulticallItemFailed(v.returnData.clone()))
+                    Err(MulticallError::MulticallCallItemFailed(
+                        v.returnData.clone(),
+                    ))
                 }
             })
             .collect::<Vec<Result<Result<T::Return, MulticallError>, MulticallError>>>())
@@ -102,11 +110,12 @@ impl<T: SolCall> Multicall<T> {
 mod tests {
     use super::*;
 
+    sol! {
+        function symbol() public view returns (string memory);
+    }
+
     #[test]
     fn clear_calls_test() -> anyhow::Result<()> {
-        sol! {
-            function symbol() public view returns (string memory);
-        }
         let mut multicall = Multicall::default();
 
         let dai = Address::from_hex("0x8f3cf7ad23cd3cadbd9735aff958023239c6a063")?;
@@ -114,14 +123,14 @@ mod tests {
             address: dai,
             call: symbolCall {},
         };
-        multicall.add_call(dai_symbol_call);
-
         let usdc = Address::from_hex("0x2791bca1f2de4661ed88a30c99a7a9449aa84174")?;
         let usdc_symbol_call = MulticallCallItem {
             address: usdc,
             call: symbolCall {},
         };
-        multicall.add_call(usdc_symbol_call);
+        multicall
+            .add_call(usdc_symbol_call)
+            .add_call(dai_symbol_call);
 
         multicall.clear_calls();
         assert!(multicall.calls.is_empty());
@@ -131,9 +140,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_multicall_read() -> anyhow::Result<()> {
-        sol! {
-            function symbol() public view returns (string memory);
-        }
         let mut multicall = Multicall::default();
 
         let dai = Address::from_hex("0x8f3cf7ad23cd3cadbd9735aff958023239c6a063")?;
@@ -141,14 +147,14 @@ mod tests {
             address: dai,
             call: symbolCall {},
         };
-        multicall.add_call(dai_symbol_call);
-
         let usdc = Address::from_hex("0x2791bca1f2de4661ed88a30c99a7a9449aa84174")?;
         let usdc_symbol_call = MulticallCallItem {
             address: usdc,
             call: symbolCall {},
         };
-        multicall.add_call(usdc_symbol_call);
+        multicall
+            .add_call(dai_symbol_call)
+            .add_call(usdc_symbol_call);
 
         let rpc_url = std::env::var("TEST_POLYGON_RPC")?;
         let provider = ReadableClient::new_from_url(rpc_url)?;
