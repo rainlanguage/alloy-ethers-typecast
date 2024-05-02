@@ -1,8 +1,8 @@
-use thiserror::Error;
+use crate::transaction::{ReadContractParameters, ReadableClient, ReadableClientError};
+use alloy_primitives::{hex::FromHex, Address, U64};
 use alloy_sol_types::{sol, SolCall};
 use ethers::providers::JsonRpcClient;
-use alloy_primitives::{hex::FromHex, Address, U64};
-use crate::transaction::{ReadContractParameters, ReadableClient, ReadableClientError};
+use thiserror::Error;
 
 /// Multicall3 contract address on all supported chains
 /// safe to say Multicall3 is deployed at this address on all major evm chains,
@@ -27,6 +27,9 @@ sol! {
 
 #[derive(Error, Debug)]
 pub enum MulticallError {
+    #[error(transparent)]
+    ClientError(#[from] ReadableClientError),
+
     #[error(transparent)]
     AlloySolTypesError(#[from] alloy_sol_types::Error),
 
@@ -72,7 +75,8 @@ impl<T: SolCall> Multicall<T> {
         provider: ReadableClient<impl JsonRpcClient>,
         block_number: Option<u64>,
         multicall_address_override: Option<Address>,
-    ) -> Result<Vec<Result<Result<T::Return, MulticallError>, MulticallError>>, ReadableClientError> {
+    ) -> Result<Vec<Result<Result<T::Return, MulticallError>, MulticallError>>, MulticallError>
+    {
         let calls = self
             .calls
             .iter()
