@@ -49,21 +49,22 @@ impl<T: SolCall> Default for Multicall<T> {
 }
 
 impl<T: SolCall> Multicall<T> {
-    /// adds a single call to the list of multicall calls
+    /// Adds a single call to the list of multicall calls
     pub fn add_call(&mut self, call: MulticallCallItem<T>) -> &mut Self {
         self.calls.push(call);
         self
     }
 
-    /// clears the calls list
+    /// Clears the calls list
     pub fn clear_calls(&mut self) -> &mut Self {
         self.calls.clear();
         self
     }
 
-    /// executes the read call using the provided JsonRpcClient with the calls already added to the list
-    /// the Multicall3 address on all chains is the same, except a few that have unofficial deployments
-    /// such as zkSynEra, so the default Multicall3 address can be overriden in the args
+    /// Executes the read call using the provided JsonRpcClient with the calls 
+    /// already added to the list, the Multicall3 address on all chains is the 
+    /// same, except a few that have unofficial deployments such as zkSynEra, 
+    /// so the default Multicall3 address can be overriden in the args
     pub async fn read(
         &self,
         provider: ReadableClient<impl JsonRpcClient>,
