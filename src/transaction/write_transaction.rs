@@ -82,7 +82,7 @@ impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<
                 .retries(TRANSACTION_RETRY_COUNT)
                 .confirmations(self.confirmations.into())
                 .await
-                .map_err(|e| WritableClientError::WriteConfirmationError(e))?
+                .map_err(WritableClientError::WriteConfirmationError)?
                 .ok_or(WritableClientError::WriteSendTxError(format!(
                     "Transaction did not receive {} confirmations",
                     self.confirmations,

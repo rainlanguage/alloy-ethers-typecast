@@ -1,7 +1,7 @@
 use alloy_dyn_abi::JsonAbiExt;
 use alloy_json_abi::Error as AlloyError;
 use alloy_primitives::hex::{decode, hex::encode, FromHexError};
-use ethers::providers::{Middleware, RpcError};
+use ethers::providers::RpcError;
 use once_cell::sync::Lazy;
 use reqwest::{Client, Error as ReqwestError};
 use serde_json::Value;
@@ -37,7 +37,7 @@ impl From<AbiDecodedErrorType> for String {
 impl std::fmt::Display for AbiDecodedErrorType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AbiDecodedErrorType::Unknown(data) => f.write_str(&*format!(
+            AbiDecodedErrorType::Unknown(data) => f.write_str(&format!(
                 "Execution reverted with unknown error. Data: {:?} ",
                 encode(data)
             )),
