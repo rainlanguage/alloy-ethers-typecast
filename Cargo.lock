@@ -77,6 +77,7 @@ dependencies = [
  "derive_builder",
  "ethers",
  "once_cell",
+ "rain-error-decoding",
  "reqwest",
  "serde",
  "serde_json",
@@ -2763,6 +2764,23 @@ name = "radium"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
+
+[[package]]
+name = "rain-error-decoding"
+version = "0.1.0"
+source = "git+https://github.com/rainlanguage/rain.error?rev=2ced7956ce599acfb7333bb396d11b893066df57#2ced7956ce599acfb7333bb396d11b893066df57"
+dependencies = [
+ "alloy-dyn-abi",
+ "alloy-json-abi",
+ "alloy-primitives",
+ "alloy-sol-types",
+ "ethers",
+ "once_cell",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
 
 [[package]]
 name = "rand"

@@ -1,4 +1,3 @@
-use super::error::{AbiDecodeFailedErrors, AbiDecodedErrorType};
 use crate::request_shim::{AlloyTransactionRequest, TransactionRequestShim};
 use alloy_primitives::hex::{decode, FromHexError};
 use alloy_primitives::{Address, U256};
@@ -12,6 +11,7 @@ use ethers::signers::Signer;
 use ethers::types::transaction::eip2718::TypedTransaction;
 use ethers::types::{Bytes, TransactionReceipt};
 use ethers::utils::hex;
+use rain_error_decoding::{AbiDecodeFailedErrors, AbiDecodedErrorType};
 use thiserror::Error;
 use tracing::info;
 

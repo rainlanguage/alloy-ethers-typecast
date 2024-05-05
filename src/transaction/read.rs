@@ -7,7 +7,7 @@ use ethers::providers::{Http, JsonRpcClient, Middleware, Provider, ProviderError
 use ethers::types::transaction::eip2718::TypedTransaction;
 use thiserror::Error;
 
-use super::error::{AbiDecodeFailedErrors, AbiDecodedErrorType};
+use rain_error_decoding::{AbiDecodeFailedErrors, AbiDecodedErrorType};
 
 #[derive(Error, Debug)]
 pub enum ReadableClientError {
