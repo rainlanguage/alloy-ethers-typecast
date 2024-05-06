@@ -288,20 +288,17 @@ mod tests {
         let err = result.err().unwrap();
 
         match err {
-            ReadableClientError::AbiDecodedErrorType(err) => match err {
-                AbiDecodedErrorType::Known {
-                    name,
-                    args,
-                    sig,
-                    data,
-                } => {
-                    assert_eq!(name, "UnexpectedOperandValue");
-                    assert_eq!(args, vec![] as Vec<String>);
-                    assert_eq!(sig, "UnexpectedOperandValue()");
-                    assert_eq!(data, vec![26, 198, 105, 8]);
-                }
-                _ => panic!("unexpected error type"),
-            },
+            ReadableClientError::AbiDecodedErrorType(AbiDecodedErrorType::Known {
+                name,
+                args,
+                sig,
+                data,
+            }) => {
+                assert_eq!(name, "UnexpectedOperandValue");
+                assert_eq!(args, vec![] as Vec<String>);
+                assert_eq!(sig, "UnexpectedOperandValue()");
+                assert_eq!(data, vec![26, 198, 105, 8]);
+            }
             _ => panic!("unexpected error type"),
         }
 
