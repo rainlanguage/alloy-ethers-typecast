@@ -3,22 +3,28 @@ use crate::{alloy_u64_to_ethers, ethers_u256_to_alloy};
 use alloy_primitives::{Address, U256, U64};
 use alloy_sol_types::SolCall;
 use derive_builder::Builder;
-use ethers::providers::{Http, JsonRpcClient, Middleware, Provider};
+use ethers::providers::{Http, JsonRpcClient, Middleware, Provider, ProviderError};
 use ethers::types::transaction::eip2718::TypedTransaction;
 use thiserror::Error;
+
+use rain_error_decoding::{AbiDecodeFailedErrors, AbiDecodedErrorType};
 
 #[derive(Error, Debug)]
 pub enum ReadableClientError {
     #[error("failed to instantiate provider: {0}")]
     CreateReadableClientHttpError(String),
-    #[error("failed to read call: {0}")]
-    ReadCallError(String),
+    #[error(transparent)]
+    ReadCallError(ProviderError),
     #[error("failed to decode return: {0}")]
     ReadDecodeReturnError(String),
     #[error("failed to get chain id: {0}")]
     ReadChainIdError(String),
     #[error("failed to get block number: {0}")]
     ReadBlockNumberError(String),
+    #[error(transparent)]
+    AbiDecodeFailedErrors(#[from] AbiDecodeFailedErrors),
+    #[error(transparent)]
+    AbiDecodedErrorType(#[from] AbiDecodedErrorType),
 }
 
 #[derive(Builder)]
@@ -69,8 +75,15 @@ impl<P: JsonRpcClient> ReadableClient<P> {
                     ))
                 }),
             )
-            .await
-            .map_err(|err| ReadableClientError::ReadCallError(err.to_string()))?;
+            .await;
+
+        let res = match res {
+            Ok(res) => res,
+            Err(err) => {
+                let err = AbiDecodedErrorType::try_from_provider_error(err).await?;
+                return Err(ReadableClientError::AbiDecodedErrorType(err));
+            }
+        };
 
         let return_typed = C::abi_decode_returns(res.to_vec().as_slice(), true)
             .map_err(|err| ReadableClientError::ReadDecodeReturnError(err.to_string()))?;
@@ -102,9 +115,9 @@ impl<P: JsonRpcClient> ReadableClient<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy_primitives::{Address, U256};
+    use alloy_primitives::{hex::encode, Address, U256};
     use alloy_sol_types::sol;
-    use ethers::providers::{MockProvider, MockResponse};
+    use ethers::providers::{JsonRpcError, MockProvider, MockResponse};
     use serde_json::json;
 
     sol! {
@@ -233,6 +246,61 @@ mod tests {
         let res = read_contract.get_block_number().await.unwrap();
 
         assert_eq!(res, 6_u64);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_decodable_error() -> anyhow::Result<()> {
+        // Create a mock Provider
+        let mock_provider = MockProvider::new();
+
+        let data = vec![26, 198, 105, 8];
+        let mock_error = JsonRpcError {
+            code: 3,
+            data: Some(json!(encode(&data))),
+            message: "execution reverted".to_string(),
+        };
+
+        let mock_response = MockResponse::Error(mock_error);
+        mock_provider.push_response(mock_response);
+
+        // Create a Provider instance with the mock provider
+        let client = Provider::new(mock_provider);
+
+        // Create a ReadableClient instance with the mock provider
+        let read_contract = ReadableClient::new(client);
+
+        // Create a ReadContractParameters instance
+        let parameters = ReadContractParametersBuilder::default()
+            .call(fooCall {
+                a: U256::from(42), // these could be anything, the mock provider doesn't care
+                b: U256::from(10),
+            })
+            .address(Address::repeat_byte(0x22))
+            .build()?;
+
+        // Call the read method
+        let result = read_contract.read(parameters).await;
+
+        assert!(result.is_err());
+
+        let err = result.err().unwrap();
+
+        match err {
+            ReadableClientError::AbiDecodedErrorType(AbiDecodedErrorType::Known {
+                name,
+                args,
+                sig,
+                data,
+            }) => {
+                assert_eq!(name, "UnexpectedOperandValue");
+                assert_eq!(args, vec![] as Vec<String>);
+                assert_eq!(sig, "UnexpectedOperandValue()");
+                assert_eq!(data, vec![26, 198, 105, 8]);
+            }
+            _ => panic!("unexpected error type"),
+        }
 
         Ok(())
     }
