@@ -1,13 +1,17 @@
 use crate::request_shim::{AlloyTransactionRequest, TransactionRequestShim};
+use alloy_primitives::hex::{decode, FromHexError};
 use alloy_primitives::{Address, U256};
 use alloy_sol_types::SolCall;
 use derive_builder::Builder;
+use ethers::middleware::signer::SignerMiddlewareError;
+use ethers::middleware::MiddlewareError;
 use ethers::middleware::SignerMiddleware;
-use ethers::providers::{Middleware, PendingTransaction};
+use ethers::providers::{Middleware, PendingTransaction, ProviderError};
 use ethers::signers::Signer;
 use ethers::types::transaction::eip2718::TypedTransaction;
 use ethers::types::{Bytes, TransactionReceipt};
 use ethers::utils::hex;
+use rain_error_decoding::{AbiDecodeFailedErrors, AbiDecodedErrorType};
 use thiserror::Error;
 use tracing::info;
 
@@ -19,10 +23,16 @@ pub enum WritableClientError {
     WriteSignTxError(String),
     #[error("failed to send transaction: {0}")]
     WriteSendTxError(String),
-    #[error("failed to confirm transaction: {0}")]
-    WriteConfirmationError(String),
+    #[error(transparent)]
+    WriteConfirmationError(ProviderError),
     #[error("transaction failed")]
     WriteFailedTxError(),
+    #[error(transparent)]
+    AbiDecodeFailedErrors(#[from] AbiDecodeFailedErrors),
+    #[error(transparent)]
+    AbiDecodedErrorType(#[from] AbiDecodedErrorType),
+    #[error(transparent)]
+    HexDecodeError(#[from] FromHexError),
 }
 
 #[derive(Builder, Clone, Debug)]
@@ -60,10 +70,15 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
 
         info!("Transaction submitted. Awaiting block confirmations...");
 
-        let tx_confirmation = pending_tx
-            .confirmations(4)
-            .await
-            .map_err(|err| WritableClientError::WriteConfirmationError(err.to_string()))?;
+        let res = pending_tx.confirmations(4).await;
+
+        let tx_confirmation = match res {
+            Ok(res) => res,
+            Err(err) => {
+                let err = AbiDecodedErrorType::try_from_provider_error(err).await?;
+                return Err(WritableClientError::AbiDecodedErrorType(err));
+            }
+        };
 
         let tx_receipt = match tx_confirmation {
             Some(receipt) => receipt,
@@ -94,11 +109,36 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
 
         let ethers_transaction_request = transaction_request.to_eip1559();
 
-        let pending_tx = self
+        let res = self
             .0
             .send_transaction(ethers_transaction_request, None)
-            .await
-            .map_err(|err| WritableClientError::WriteSendTxError(err.to_string()))?;
+            .await;
+
+        let pending_tx = if let Err(err) = res {
+            if let SignerMiddlewareError::MiddlewareError(err) = err {
+                if let Some(rpc_err) = err.as_error_response() {
+                    match rpc_err.data.clone() {
+                        Some(data) => {
+                            let data = data.as_str().unwrap();
+                            let data_slice = decode(data)?;
+                            let err = AbiDecodedErrorType::selector_registry_abi_decode(
+                                data_slice.as_slice(),
+                            )
+                            .await?;
+                            return Err(WritableClientError::WriteSendTxError(err.to_string()));
+                        }
+                        None => {
+                            return Err(WritableClientError::WriteSendTxError(err.to_string()));
+                        }
+                    }
+                }
+                return Err(WritableClientError::WriteSendTxError(err.to_string()));
+            } else {
+                return Err(WritableClientError::WriteSendTxError(err.to_string()));
+            }
+        } else {
+            res.map_err(|e| WritableClientError::WriteSendTxError(e.to_string()))?
+        };
 
         Ok(pending_tx)
     }
@@ -150,9 +190,8 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
 
 #[cfg(test)]
 mod tests {
-    use crate::transaction::mock_middleware::{MockJsonRpcClient, MockMiddleware};
-
     use super::*;
+    use crate::transaction::mock_middleware::{MockJsonRpcClient, MockMiddleware};
     use alloy_primitives::{Address, U256};
     use alloy_sol_types::sol;
     use ethers::core::rand::thread_rng;
