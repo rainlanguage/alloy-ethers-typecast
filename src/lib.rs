@@ -2,6 +2,7 @@ pub mod client;
 pub mod gas_fee_middleware;
 pub mod multicall;
 pub mod request_shim;
+pub mod rpc;
 pub mod transaction;
 pub mod utils;
 
