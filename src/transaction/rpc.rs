@@ -1,5 +1,11 @@
+use ethers::{
+    types::{transaction::eip2718::TypedTransaction, BlockId, BlockNumber, U64},
+    utils,
+};
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use serde_json::{value::RawValue, Value};
+
+use crate::request_shim::{AlloyTransactionRequest, TransactionRequestShim};
 
 /// A JSON-RPC request, taken from ethers since it is private
 /// https://github.com/gakonst/ethers-rs/blob/master/ethers-providers/src/rpc/transports/common.rs
@@ -18,6 +24,26 @@ impl<T> Request<T> {
             jsonrpc: "2.0".to_string(),
             method: method.to_string(),
             params,
+        }
+    }
+
+    pub fn new_call_request(
+        id: u64,
+        transaction: &AlloyTransactionRequest,
+        block: Option<u64>,
+    ) -> Request<[Value; 2]> {
+        let tx = utils::serialize(&TypedTransaction::Eip1559(transaction.to_eip1559()));
+        let block = utils::serialize::<BlockId>(
+            &block
+                .map(|v| BlockNumber::Number(U64::from(v)))
+                .unwrap_or(BlockNumber::Latest)
+                .into(),
+        );
+        Request {
+            id,
+            jsonrpc: "2.0".to_string(),
+            method: "eth_call".to_string(),
+            params: [tx, block],
         }
     }
 }
@@ -64,6 +90,8 @@ impl Response {
     }
 }
 
+// result field in Success variant needs to be serialized as
+// serde_json::RawValue, so we need to implement a custom serializer
 impl Serialize for Response {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match *self {
@@ -110,6 +138,7 @@ pub struct JsonRpcError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloy_primitives::Address;
 
     #[test]
     fn test_response_serializer() {
@@ -121,6 +150,30 @@ mod tests {
         let response = Response::new_error(1, -32003, "execution reverted", Some("0x00"));
         let result = response.to_json_string().unwrap();
         let expected = r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32003,"message":"execution reverted","data":"0x00"}}"#.to_string();
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_new_call_request() {
+        let address = Address::random();
+        let data = alloy_primitives::hex::decode("0x1234").unwrap();
+        let transaction = AlloyTransactionRequest::new()
+            .with_to(Some(address))
+            .with_data(Some(data));
+        let result = Request::<[Value; 2]>::new_call_request(1, &transaction, None);
+        let expected = Request {
+            id: 1,
+            jsonrpc: "2.0".to_string(),
+            method: "eth_call".to_string(),
+            params: [
+                serde_json::json!({
+                    "accessList":[],
+                    "data":"0x1234",
+                    "to":address.to_string().to_ascii_lowercase()
+                }),
+                Value::String("latest".to_string()),
+            ],
+        };
         assert_eq!(result, expected);
     }
 }
