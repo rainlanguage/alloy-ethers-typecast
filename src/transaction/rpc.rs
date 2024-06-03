@@ -1,20 +1,17 @@
-use ethers::{
-    types::{transaction::eip2718::TypedTransaction, BlockId, BlockNumber, U64},
-    utils,
-};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::request_shim::{AlloyTransactionRequest, TransactionRequestShim};
+pub use ethers::types::transaction::*;
+pub use ethers::types::BlockNumber;
 
 /// A JSON-RPC request, taken from ethers since it is private
 /// https://github.com/gakonst/ethers-rs/blob/master/ethers-providers/src/rpc/transports/common.rs
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Request<T> {
-    id: u64,
-    jsonrpc: String,
-    method: String,
-    params: T,
+    pub id: u64,
+    pub jsonrpc: String,
+    pub method: String,
+    pub params: T,
 }
 impl<T> Request<T> {
     /// Creates a new JSON RPC request
@@ -30,21 +27,14 @@ impl<T> Request<T> {
     /// creates a new eth_call rpc request from the given transaction and block
     pub fn new_call_request(
         id: u64,
-        transaction: &AlloyTransactionRequest,
-        block: Option<u64>,
-    ) -> Request<[Value; 2]> {
-        let tx = utils::serialize(&TypedTransaction::Eip1559(transaction.to_eip1559()));
-        let block = utils::serialize::<BlockId>(
-            &block
-                .map(|v| BlockNumber::Number(U64::from(v)))
-                .unwrap_or(BlockNumber::Latest)
-                .into(),
-        );
+        tx: eip2718::TypedTransaction,
+        block: Option<BlockNumber>,
+    ) -> Request<(eip2718::TypedTransaction, BlockNumber)> {
         Request {
             id,
             jsonrpc: "2.0".to_string(),
             method: "eth_call".to_string(),
-            params: [tx, block],
+            params: (tx, block.unwrap_or(BlockNumber::Latest)),
         }
     }
 }
@@ -113,6 +103,7 @@ pub struct Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::request_shim::{AlloyTransactionRequest, TransactionRequestShim};
     use alloy_primitives::Address;
 
     #[test]
@@ -135,37 +126,18 @@ mod tests {
         let transaction = AlloyTransactionRequest::new()
             .with_to(Some(address))
             .with_data(Some(data));
-        let result = Request::<[Value; 2]>::new_call_request(1, &transaction, None)
-            .to_json_string()
-            .unwrap();
+        let transaction = eip2718::TypedTransaction::Eip1559(transaction.to_eip1559());
+        let result = Request::<(eip2718::TypedTransaction, BlockNumber)>::new_call_request(
+            1,
+            transaction,
+            None,
+        )
+        .to_json_string()
+        .unwrap();
         let expected = format!(
-            r#"{{"id":1,"jsonrpc":"2.0","method":"eth_call","params":[{{"accessList":[],"data":"0x1234","to":"{}"}},"latest"]}}"#,
+            r#"{{"id":1,"jsonrpc":"2.0","method":"eth_call","params":[{{"to":"{}","data":"0x1234","accessList":[]}},"latest"]}}"#,
             address.to_string().to_ascii_lowercase()
         );
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_new_call_request() {
-        let address = Address::random();
-        let data = alloy_primitives::hex::decode("0x1234").unwrap();
-        let transaction = AlloyTransactionRequest::new()
-            .with_to(Some(address))
-            .with_data(Some(data));
-        let result = Request::<[Value; 2]>::new_call_request(1, &transaction, None);
-        let expected = Request {
-            id: 1,
-            jsonrpc: "2.0".to_string(),
-            method: "eth_call".to_string(),
-            params: [
-                serde_json::json!({
-                    "accessList":[],
-                    "data":"0x1234",
-                    "to":address.to_string().to_ascii_lowercase()
-                }),
-                Value::String("latest".to_string()),
-            ],
-        };
         assert_eq!(result, expected);
     }
 }
