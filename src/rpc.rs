@@ -25,7 +25,7 @@ impl<T> Request<T> {
     }
 
     /// creates a new eth_call rpc request from the given transaction and block
-    pub fn new_call_request(
+    pub fn eth_call_request(
         id: u64,
         tx: eip2718::TypedTransaction,
         block: Option<BlockNumber>,
@@ -127,7 +127,7 @@ mod tests {
             .with_to(Some(address))
             .with_data(Some(data));
         let transaction = eip2718::TypedTransaction::Eip1559(transaction.to_eip1559());
-        let result = Request::<(eip2718::TypedTransaction, BlockNumber)>::new_call_request(
+        let result = Request::<(eip2718::TypedTransaction, BlockNumber)>::eth_call_request(
             1,
             transaction,
             None,
