@@ -2768,7 +2768,7 @@ checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
 [[package]]
 name = "rain-error-decoding"
 version = "0.1.0"
-source = "git+https://github.com/rainlanguage/rain.error?rev=6763061d89cfc084c81e01f75f6118881fa5b77b#6763061d89cfc084c81e01f75f6118881fa5b77b"
+source = "git+https://github.com/rainlanguage/rain.error?rev=700142c3c73d5cbaea82f1d51af5ce04de5bac6a#700142c3c73d5cbaea82f1d51af5ce04de5bac6a"
 dependencies = [
  "alloy-dyn-abi",
  "alloy-json-abi",
