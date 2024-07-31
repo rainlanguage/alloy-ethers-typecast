@@ -1,3 +1,4 @@
+#[cfg(not(target_family = "wasm"))]
 pub mod client;
 pub mod gas_fee_middleware;
 pub mod multicall;
