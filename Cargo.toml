@@ -29,7 +29,6 @@ serde = "1.0.195"
 rain-error-decoding = { git = "https://github.com/rainlanguage/rain.error", rev = "72d9577fdaf7135113847027ba951f9a43b41827" }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-ethers = { version = "2.0.14", features = ["legacy"] }
 getrandom = { version = "0.2.11", features = ["js", "js-sys"] }
 
 [dev-dependencies]
