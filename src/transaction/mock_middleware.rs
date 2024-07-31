@@ -51,7 +51,8 @@ where
     }
 }
 
-#[async_trait]
+#[cfg_attr(not(target_family = "wasm"), async_trait)]
+#[cfg_attr(target_family = "wasm", async_trait(?Send))]
 impl<M> Middleware for MockMiddleware<M>
 where
     M: Middleware,
@@ -193,7 +194,8 @@ impl MockJsonRpcClient {
     }
 }
 
-#[async_trait]
+#[cfg_attr(not(target_family = "wasm"), async_trait)]
+#[cfg_attr(target_family = "wasm", async_trait(?Send))]
 impl JsonRpcClient for MockJsonRpcClient {
     type Error = ProviderError;
 

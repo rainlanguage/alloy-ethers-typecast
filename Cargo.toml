@@ -28,6 +28,10 @@ tracing-subscriber = "0.3.18"
 serde = "1.0.195"
 rain-error-decoding = { git = "https://github.com/rainlanguage/rain.error", rev = "700142c3c73d5cbaea82f1d51af5ce04de5bac6a" }
 
+[target.'cfg(target_family = "wasm")'.dependencies]
+ethers = { version = "2.0.14", features = ["legacy"] }
+getrandom = { version = "0.2.11", features = ["js", "js-sys"] }
+
 [dev-dependencies]
 tokio = { version = "1.28.0", features = ["full"] }
 anyhow = "1.0.70"
