@@ -104,7 +104,7 @@ pub struct Error {
 mod tests {
     use super::*;
     use crate::request_shim::{AlloyTransactionRequest, TransactionRequestShim};
-    use alloy_primitives::Address;
+    use alloy::primitives::Address;
 
     #[test]
     fn test_response_to_json() {
@@ -122,7 +122,7 @@ mod tests {
     #[test]
     fn test_request_to_json() {
         let address = Address::random();
-        let data = alloy_primitives::hex::decode("0x1234").unwrap();
+        let data = alloy::primitives::hex::decode("0x1234").unwrap();
         let transaction = AlloyTransactionRequest::new()
             .with_to(Some(address))
             .with_data(Some(data));

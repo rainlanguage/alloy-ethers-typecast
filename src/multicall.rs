@@ -1,6 +1,7 @@
 use crate::transaction::{ReadContractParameters, ReadableClient, ReadableClientError};
-use alloy_primitives::{hex::FromHex, Address, U64};
-use alloy_sol_types::{sol, SolCall};
+use alloy::primitives::{hex::FromHex, Address, U64};
+use alloy::sol;
+use alloy::sol_types::SolCall;
 use ethers::providers::JsonRpcClient;
 use thiserror::Error;
 
@@ -23,7 +24,7 @@ pub enum MulticallError {
     ClientError(#[from] ReadableClientError),
 
     #[error(transparent)]
-    AlloySolTypesError(#[from] alloy_sol_types::Error),
+    AlloySolTypesError(#[from] alloy::sol_types::Error),
 
     #[error("Multicall call item failed")]
     MulticallCallItemFailed(Vec<u8>),
@@ -78,7 +79,7 @@ impl<T: SolCall> Multicall<T> {
             .map(|v| self::IMulticall3::Call3 {
                 allowFailure: true,
                 target: v.address,
-                callData: v.call.abi_encode(),
+                callData: v.call.abi_encode().into(),
             })
             .collect::<Vec<self::IMulticall3::Call3>>();
 
@@ -98,7 +99,7 @@ impl<T: SolCall> Multicall<T> {
                 v.success
                     .then(|| Ok(T::abi_decode_returns(&v.returnData, true).map_err(Into::into)))
                     .unwrap_or(Err(MulticallError::MulticallCallItemFailed(
-                        v.returnData.clone(),
+                        v.returnData.clone().into(),
                     )))
             })
             .collect::<Vec<Result<Result<T::Return, MulticallError>, MulticallError>>>())

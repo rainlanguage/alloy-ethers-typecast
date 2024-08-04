@@ -7,49 +7,49 @@ pub mod rpc;
 pub mod transaction;
 pub mod utils;
 
-/// Converts [ethers::types::Address] to [alloy_primitives::Address]
-pub fn ethers_address_to_alloy(address: ethers::types::Address) -> alloy_primitives::Address {
+/// Converts [ethers::types::Address] to [alloy::primitives::Address]
+pub fn ethers_address_to_alloy(address: ethers::types::Address) -> alloy::primitives::Address {
     address.to_fixed_bytes().into()
 }
 
-/// Converts [alloy_primitives::Address] to [ethers::types::Address]
-pub fn alloy_address_to_ethers(address: alloy_primitives::Address) -> ethers::types::Address {
+/// Converts [alloy::primitives::Address] to [ethers::types::Address]
+pub fn alloy_address_to_ethers(address: alloy::primitives::Address) -> ethers::types::Address {
     ethers::types::H160::from(address.into_array())
 }
 
-/// Converts [ethers::types::U256] to [alloy_primitives::U256]
-pub fn ethers_u256_to_alloy(value: ethers::types::U256) -> alloy_primitives::U256 {
+/// Converts [ethers::types::U256] to [alloy::primitives::U256]
+pub fn ethers_u256_to_alloy(value: ethers::types::U256) -> alloy::primitives::U256 {
     let mut data = [0_u8; 32];
     value.to_little_endian(&mut data);
-    alloy_primitives::U256::from_le_slice(&data)
+    alloy::primitives::U256::from_le_slice(&data)
 }
 
-/// Converts [alloy_primitives::U256] to [ethers::types::U256]
-pub fn alloy_u256_to_ethers(value: alloy_primitives::U256) -> ethers::types::U256 {
+/// Converts [alloy::primitives::U256] to [ethers::types::U256]
+pub fn alloy_u256_to_ethers(value: alloy::primitives::U256) -> ethers::types::U256 {
     let data = value.as_le_slice();
     ethers::types::U256::from_little_endian(data)
 }
 
-/// Converts [ethers::types::U64] to [alloy_primitives::U64]
-pub fn ethers_u64_to_alloy(value: ethers::types::U64) -> alloy_primitives::U64 {
+/// Converts [ethers::types::U64] to [alloy::primitives::U64]
+pub fn ethers_u64_to_alloy(value: ethers::types::U64) -> alloy::primitives::U64 {
     let mut data = [0_u8; 8];
     value.to_little_endian(&mut data);
-    alloy_primitives::U64::from_le_slice(&data)
+    alloy::primitives::U64::from_le_slice(&data)
 }
 
-/// Converts [alloy_primitives::U64] to [ethers::types::U64]
-pub fn alloy_u64_to_ethers(value: alloy_primitives::U64) -> ethers::types::U64 {
+/// Converts [alloy::primitives::U64] to [ethers::types::U64]
+pub fn alloy_u64_to_ethers(value: alloy::primitives::U64) -> ethers::types::U64 {
     let data = value.as_le_slice();
     ethers::types::U64::from_little_endian(data)
 }
 
-/// Converts [ethers::types::Bytes] to [alloy_primitives::Bytes]
-pub fn ethers_bytes_to_alloy(bytes: ethers::types::Bytes) -> alloy_primitives::Bytes {
+/// Converts [ethers::types::Bytes] to [alloy::primitives::Bytes]
+pub fn ethers_bytes_to_alloy(bytes: ethers::types::Bytes) -> alloy::primitives::Bytes {
     bytes.to_vec().into()
 }
 
-/// Converts [alloy_primitives::Bytes]to [ethers::types::Bytes]
-pub fn alloy_bytes_to_ethers(bytes: alloy_primitives::Bytes) -> ethers::types::Bytes {
+/// Converts [alloy::primitives::Bytes]to [ethers::types::Bytes]
+pub fn alloy_bytes_to_ethers(bytes: alloy::primitives::Bytes) -> ethers::types::Bytes {
     bytes.to_vec().into()
 }
 
@@ -59,6 +59,7 @@ pub mod test {
         alloy_address_to_ethers, alloy_bytes_to_ethers, alloy_u256_to_ethers,
         ethers_address_to_alloy, ethers_bytes_to_alloy, ethers_u256_to_alloy,
     };
+    use alloy::primitives::Address;
     use ethers::core::rand::random;
 
     #[test]
@@ -73,7 +74,7 @@ pub mod test {
     #[test]
     pub fn test_alloy_address_to_ethers() {
         for _i in 0..10 {
-            let alloy_address = alloy_primitives::Address::random();
+            let alloy_address = alloy::primitives::Address::random();
             let ethers_address = alloy_address_to_ethers(alloy_address);
             assert!(alloy_address.eq(&ethers_address_to_alloy(ethers_address)));
         }
@@ -91,7 +92,7 @@ pub mod test {
     #[test]
     pub fn test_alloy_u256_to_ethers() {
         for _i in 0..10 {
-            let alloy_u256 = alloy_primitives::U256::from(random::<u128>());
+            let alloy_u256 = alloy::primitives::U256::from(random::<u128>());
             let ethers_u256 = alloy_u256_to_ethers(alloy_u256);
             assert!(alloy_u256.eq(&ethers_u256_to_alloy(ethers_u256)));
         }
@@ -111,7 +112,7 @@ pub mod test {
     pub fn test_alloy_bytes_to_ethers() {
         for _i in 0..10 {
             let random_bytes: Vec<u8> = (0..1024).map(|_| random::<u8>()).collect();
-            let alloy_bytes = alloy_primitives::Bytes::from(random_bytes);
+            let alloy_bytes = alloy::primitives::Bytes::from(random_bytes);
             let ethers_bytes = alloy_bytes_to_ethers(alloy_bytes.clone());
             assert!(alloy_bytes.eq(&ethers_bytes_to_alloy(ethers_bytes)));
         }

@@ -1,5 +1,5 @@
 use crate::transaction::{WritableClient, WritableClientError, WriteContractParameters};
-use alloy_sol_types::SolCall;
+use alloy::sol_types::SolCall;
 use ethers::middleware::SignerMiddleware;
 use ethers::providers::Middleware;
 use ethers::signers::Signer;
@@ -104,8 +104,8 @@ mod tests {
     use crate::transaction::WriteContractParametersBuilder;
 
     use super::*;
-    use alloy_primitives::{Address, U256};
-    use alloy_sol_types::sol;
+    use alloy::primitives::{Address, U256};
+    use alloy::sol;
     use ethers::core::rand::thread_rng;
     use ethers::providers::Provider;
     use ethers::signers::LocalWallet;

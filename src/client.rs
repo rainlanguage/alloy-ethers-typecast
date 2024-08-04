@@ -1,6 +1,6 @@
 use crate::ethers_address_to_alloy;
 use crate::gas_fee_middleware::{GasFeeMiddleware, GasFeeMiddlewareError, GasFeeSpeed};
-use alloy_primitives::Address;
+use alloy::primitives::Address;
 use ethers::middleware::SignerMiddleware;
 use ethers::prelude::{Http, Provider};
 use ethers::signers::{Ledger, LedgerError};
