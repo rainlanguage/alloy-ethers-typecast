@@ -59,7 +59,6 @@ pub mod test {
         alloy_address_to_ethers, alloy_bytes_to_ethers, alloy_u256_to_ethers,
         ethers_address_to_alloy, ethers_bytes_to_alloy, ethers_u256_to_alloy,
     };
-    use alloy::primitives::Address;
     use ethers::core::rand::random;
 
     #[test]
