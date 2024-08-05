@@ -1,7 +1,7 @@
 use crate::request_shim::{AlloyTransactionRequest, TransactionRequestShim};
 use crate::{alloy_u64_to_ethers, ethers_u256_to_alloy};
-use alloy_primitives::{Address, U256, U64};
-use alloy_sol_types::SolCall;
+use alloy::primitives::{Address, U256, U64};
+use alloy::sol_types::SolCall;
 use derive_builder::Builder;
 use ethers::providers::{Http, JsonRpcClient, Middleware, Provider, ProviderError};
 use ethers::types::transaction::eip2718::TypedTransaction;
@@ -115,8 +115,8 @@ impl<P: JsonRpcClient> ReadableClient<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy_primitives::{hex::encode, Address, U256};
-    use alloy_sol_types::sol;
+    use alloy::primitives::{hex::encode, Address, U256};
+    use alloy::sol;
     use ethers::providers::{JsonRpcError, MockProvider, MockResponse};
     use serde_json::json;
 

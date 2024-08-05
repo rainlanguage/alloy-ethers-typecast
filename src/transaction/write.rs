@@ -1,7 +1,7 @@
 use crate::request_shim::{AlloyTransactionRequest, TransactionRequestShim};
-use alloy_primitives::hex::{decode, FromHexError};
-use alloy_primitives::{Address, U256};
-use alloy_sol_types::SolCall;
+use alloy::primitives::hex::{decode, FromHexError};
+use alloy::primitives::{Address, U256};
+use alloy::sol_types::SolCall;
 use derive_builder::Builder;
 use ethers::middleware::signer::SignerMiddlewareError;
 use ethers::middleware::MiddlewareError;
@@ -192,8 +192,8 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
 mod tests {
     use super::*;
     use crate::transaction::mock_middleware::{MockJsonRpcClient, MockMiddleware};
-    use alloy_primitives::{Address, U256};
-    use alloy_sol_types::sol;
+    use alloy::primitives::{Address, U256};
+    use alloy::sol;
     use ethers::core::rand::thread_rng;
     use ethers::providers::Provider;
     use ethers::signers::LocalWallet;
