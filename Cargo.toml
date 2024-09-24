@@ -9,10 +9,6 @@ homepage = "https://github.com/rainlanguage/rain.interpreter"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ethers = { version = "2.0.14", features = [
-  "legacy",
-  "ledger",
-] }
 alloy = { version = "0.1.4", features = ["rand", "sol-types"] }
 once_cell = "1.17.1"
 reqwest = { version = "0.11.17", features = ["json"] }
@@ -23,13 +19,25 @@ async-trait = "0.1.77"
 thiserror = "1.0.56"
 tracing-subscriber = "0.3.18"
 serde = "1.0.195"
-rain-error-decoding = { git = "https://github.com/rainlanguage/rain.error", rev = "72d9577fdaf7135113847027ba951f9a43b41827" }
+rain-error-decoding = { git = "https://github.com/rainlanguage/rain.error", rev = "2cba070d52931f9b9697140a7f513c5d5e00ca6f" }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 getrandom = { version = "0.2.11", features = ["js", "js-sys"] }
+ethers = { version = "2.0.14", features = ["legacy"] }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+ethers = { version = "2.0.14", features = [
+  "legacy",
+  "ledger",
+] }
+
+[target.'cfg(target_family = "wasm")'.dev-dependencies]
+tokio = { version = "1.28.0", features = ["sync", "macros", "io-util", "rt", "time"] }
+
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
+tokio = { version = "1.28.0", features = ["full"] }
 
 [dev-dependencies]
-tokio = { version = "1.28.0", features = ["full"] }
 anyhow = "1.0.70"
 
 [lints.clippy]
