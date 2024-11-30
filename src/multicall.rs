@@ -1,4 +1,5 @@
 use crate::transaction::{ReadContractParameters, ReadableClient, ReadableClientError};
+use alloy::primitives::U256;
 use alloy::primitives::{hex::FromHex, Address, U64};
 use alloy::sol;
 use alloy::sol_types::SolCall;
@@ -70,6 +71,7 @@ impl<T: SolCall> Multicall<T> {
         &self,
         provider: &ReadableClient<impl JsonRpcClient>,
         block_number: Option<u64>,
+        gas: Option<U256>,
         multicall_address_override: Option<Address>,
     ) -> Result<Vec<Result<Result<T::Return, MulticallError>, MulticallError>>, MulticallError>
     {
@@ -88,6 +90,7 @@ impl<T: SolCall> Multicall<T> {
                 .unwrap_or(Address::from_hex(MULTICALL3_ADDRESS).unwrap()),
             call: self::IMulticall3::aggregate3Call { calls },
             block_number: block_number.map(U64::from),
+            gas
         };
 
         let result = provider.read(params).await?;
@@ -158,7 +161,7 @@ mod tests {
 
         let rpc_url = std::env::var("TEST_POLYGON_RPC")?;
         let provider = ReadableClient::new_from_url(rpc_url)?;
-        let result = multicall.read(&provider, None, None).await?;
+        let result = multicall.read(&provider, None, None, None).await?;
         let mut result_symbols = vec![];
         for res in result {
             result_symbols.push(res??._0);
