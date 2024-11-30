@@ -90,7 +90,7 @@ impl<T: SolCall> Multicall<T> {
                 .unwrap_or(Address::from_hex(MULTICALL3_ADDRESS).unwrap()),
             call: self::IMulticall3::aggregate3Call { calls },
             block_number: block_number.map(U64::from),
-            gas
+            gas,
         };
 
         let result = provider.read(params).await?;
