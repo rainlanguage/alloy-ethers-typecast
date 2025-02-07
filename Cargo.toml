@@ -31,6 +31,7 @@ getrandom = { version = "0.2.11", features = ["js", "js-sys"] }
 [dev-dependencies]
 tokio = { version = "1.28.0", features = ["full"] }
 anyhow = "1.0.70"
+httpmock = "0.7.0"
 
 [lints.clippy]
 all = "warn"
