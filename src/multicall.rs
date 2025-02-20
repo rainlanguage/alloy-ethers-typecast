@@ -112,6 +112,10 @@ impl<T: SolCall> Multicall<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{multicall::IMulticall3::Result as MulticallResult, rpc::Response};
+    use alloy::{hex::encode_prefixed, primitives::B256, sol_types::SolValue};
+    use httpmock::{Method::POST, MockServer};
+    use serde_json::{from_str, Value};
 
     sol! {
         function symbol() public view returns (string memory);
@@ -143,6 +147,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_multicall_read() -> anyhow::Result<()> {
+        let rpc_server = MockServer::start();
         let mut multicall = Multicall::default();
 
         let dai = Address::from_hex("0x8f3cf7ad23cd3cadbd9735aff958023239c6a063")?;
@@ -159,8 +164,32 @@ mod tests {
             .add_call(dai_symbol_call)
             .add_call(usdc_symbol_call);
 
-        let rpc_url = std::env::var("TEST_POLYGON_RPC")?;
-        let provider = ReadableClient::new_from_url(rpc_url)?;
+        let response_data = vec![
+            MulticallResult {
+                success: true,
+                returnData: "DAI".abi_encode().into(),
+            },
+            MulticallResult {
+                success: true,
+                returnData: "USDC".abi_encode().into(),
+            },
+        ]
+        .abi_encode();
+
+        // mock rpc with call data and response data
+        rpc_server.mock(|when, then| {
+            when.method(POST).path("/rpc").body_contains("0x82ad56cb");
+            then.json_body_obj(
+                &from_str::<Value>(
+                    &Response::new_success(1, encode_prefixed(response_data).as_str())
+                        .to_json_string()
+                        .unwrap(),
+                )
+                .unwrap(),
+            );
+        });
+
+        let provider = ReadableClient::new_from_url(rpc_server.url("/rpc"))?;
         let result = multicall.read(&provider, None, None, None).await?;
         let mut result_symbols = vec![];
         for res in result {
