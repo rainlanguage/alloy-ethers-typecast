@@ -113,7 +113,7 @@ impl<T: SolCall> Multicall<T> {
 mod tests {
     use super::*;
     use crate::{multicall::IMulticall3::Result as MulticallResult, rpc::Response};
-    use alloy::{hex::encode_prefixed, primitives::B256, sol_types::SolValue};
+    use alloy::{hex::encode_prefixed, sol_types::SolValue};
     use httpmock::{Method::POST, MockServer};
     use serde_json::{from_str, Value};
 
@@ -189,7 +189,7 @@ mod tests {
             );
         });
 
-        let provider = ReadableClient::new_from_url(rpc_server.url("/rpc"))?;
+        let provider = ReadableClient::new_from_urls(vec![rpc_server.url("/rpc")])?;
         let result = multicall.read(&provider, None, None, None).await?;
         let mut result_symbols = vec![];
         for res in result {
