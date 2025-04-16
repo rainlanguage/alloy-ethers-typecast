@@ -50,6 +50,14 @@ pub struct ReadableClient<P: JsonRpcClient> {
 pub type ReadableClientHttp = ReadableClient<Http>;
 
 impl ReadableClient<Http> {
+    pub fn new_from_url(url: String) -> Result<Self, ReadableClientError> {
+        let provider = Provider::<Http>::try_from(url.clone())
+            .map_err(|err| ReadableClientError::CreateReadableClientHttpError(err.to_string()))?;
+        Ok(Self {
+            providers: HashMap::from([(url, provider)]),
+        })
+    }
+
     pub fn new_from_urls(urls: Vec<String>) -> Result<Self, ReadableClientError> {
         let providers: HashMap<String, _> = urls
             .into_iter()
