@@ -33,6 +33,8 @@ pub enum WritableClientError {
     AbiDecodedErrorType(#[from] AbiDecodedErrorType),
     #[error(transparent)]
     HexDecodeError(#[from] FromHexError),
+    #[error("rpc provider returned an error: '{0}'")]
+    RpcError(String),
 }
 
 #[derive(Builder, Clone, Debug)]
@@ -74,9 +76,24 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
 
         let tx_confirmation = match res {
             Ok(res) => res,
-            Err(err) => {
-                let err = AbiDecodedErrorType::try_from_provider_error(err).await?;
-                return Err(WritableClientError::AbiDecodedErrorType(err));
+            Err(provider_err) => {
+                let error_to_insert = if let Some(rpc_err) = provider_err.as_error_response() {
+                    if rpc_err.is_revert() {
+                        match AbiDecodedErrorType::try_from_json_rpc_error(rpc_err.clone()).await {
+                            Ok(decoded_err) => {
+                                WritableClientError::AbiDecodedErrorType(decoded_err)
+                            }
+                            Err(decode_failed_err) => {
+                                WritableClientError::AbiDecodeFailedErrors(decode_failed_err)
+                            }
+                        }
+                    } else {
+                        WritableClientError::RpcError(rpc_err.to_string())
+                    }
+                } else {
+                    WritableClientError::WriteConfirmationError(provider_err)
+                };
+                return Err(error_to_insert);
             }
         };
 

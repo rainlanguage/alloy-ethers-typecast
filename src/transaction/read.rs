@@ -3,7 +3,7 @@ use crate::{alloy_u64_to_ethers, ethers_u256_to_alloy};
 use alloy::primitives::{Address, U256, U64};
 use alloy::sol_types::SolCall;
 use derive_builder::Builder;
-use ethers::providers::{Http, JsonRpcClient, Middleware, Provider, ProviderError};
+use ethers::providers::{Http, JsonRpcClient, Middleware, Provider, ProviderError, RpcError};
 use ethers::types::transaction::eip2718::TypedTransaction;
 use std::collections::HashMap;
 use thiserror::Error;
@@ -28,8 +28,8 @@ pub enum ReadableClientError {
     AbiDecodedErrorType(#[from] AbiDecodedErrorType),
     #[error("all providers failed to handle the request: {0:?}")]
     AllProvidersFailed(HashMap<String, ReadableClientError>),
-    #[error("rpc provider {0} failed to handle the request: {1}")]
-    RpcProviderFailed(String, String),
+    #[error("rpc provider '{0}' returned an error: '{1}'")]
+    RpcProviderError(String, String),
 }
 
 #[derive(Builder)]
@@ -112,20 +112,25 @@ impl<P: JsonRpcClient> ReadableClient<P> {
                     });
                 }
                 Err(provider_err) => {
-                    match AbiDecodedErrorType::try_from_provider_error(provider_err).await {
-                        Ok(decoded_err) => {
-                            errors.insert(
-                                url.clone(),
-                                ReadableClientError::AbiDecodedErrorType(decoded_err),
-                            );
+                    let error_to_insert = if let Some(rpc_err) = provider_err.as_error_response() {
+                        if rpc_err.is_revert() {
+                            match AbiDecodedErrorType::try_from_json_rpc_error(rpc_err.clone())
+                                .await
+                            {
+                                Ok(decoded_err) => {
+                                    ReadableClientError::AbiDecodedErrorType(decoded_err)
+                                }
+                                Err(decode_failed_err) => {
+                                    ReadableClientError::AbiDecodeFailedErrors(decode_failed_err)
+                                }
+                            }
+                        } else {
+                            ReadableClientError::RpcProviderError(url.clone(), rpc_err.to_string())
                         }
-                        Err(decode_failed_err) => {
-                            errors.insert(
-                                url.clone(),
-                                ReadableClientError::AbiDecodeFailedErrors(decode_failed_err),
-                            );
-                        }
-                    }
+                    } else {
+                        ReadableClientError::ReadCallError(provider_err)
+                    };
+                    errors.insert(url.clone(), error_to_insert);
                 }
             }
         }
@@ -432,6 +437,7 @@ mod tests {
         let mock_provider2 = MockProvider::new();
         let mock_provider3 = MockProvider::new();
         let mock_provider4 = MockProvider::new();
+        let mock_provider5 = MockProvider::new();
 
         mock_provider1.push_response(MockResponse::Error(JsonRpcError {
             code: 3,
@@ -441,14 +447,19 @@ mod tests {
         mock_provider2.push_response(MockResponse::Error(JsonRpcError {
             code: 3,
             data: Some(json!(encode(vec![26, 198, 105, 8]))),
-            message: "some other error".to_string(),
+            message: "some revert error".to_string(),
         }));
         mock_provider3.push_response(MockResponse::Error(JsonRpcError {
+            code: 3,
+            data: Some(json!(encode(vec![26, 198, 105, 8]))),
+            message: "some other error".to_string(),
+        }));
+        mock_provider4.push_response(MockResponse::Error(JsonRpcError {
             code: 3,
             data: Some(json!({"error": "some other error"})),
             message: "some other error".to_string(),
         }));
-        mock_provider4.push_response(MockResponse::Error(JsonRpcError {
+        mock_provider5.push_response(MockResponse::Error(JsonRpcError {
             code: 3,
             data: Some(json!(&vec![1])),
             message: "some other error".to_string(),
@@ -458,12 +469,14 @@ mod tests {
         let client2 = Provider::new(mock_provider2);
         let client3 = Provider::new(mock_provider3);
         let client4 = Provider::new(mock_provider4);
+        let client5 = Provider::new(mock_provider5);
 
         let read_contract = ReadableClient::new(HashMap::from([
             ("url4".to_string(), client1),
             ("url5".to_string(), client2),
             ("url6".to_string(), client3),
             ("url7".to_string(), client4),
+            ("url8".to_string(), client5),
         ]));
 
         let parameters = ReadContractParametersBuilder::default()
@@ -478,14 +491,14 @@ mod tests {
         let err = res.err().unwrap();
         match err {
             ReadableClientError::AllProvidersFailed(errors) => {
-                assert_eq!(errors.len(), 4);
+                assert_eq!(errors.len(), 5);
 
                 assert!(errors.contains_key("url4"));
                 match errors.get("url4") {
-                    Some(ReadableClientError::AbiDecodedErrorType(
-                        AbiDecodedErrorType::Unknown(data),
+                    Some(ReadableClientError::AbiDecodeFailedErrors(
+                        AbiDecodeFailedErrors::InvalidJsonRpcResponse(msg),
                     )) => {
-                        assert_eq!(data, &Vec::<u8>::new());
+                        assert_eq!(msg, "(code: 3, message: execution reverted, data: None)");
                     }
                     _ => panic!("unexpected error type"),
                 }
@@ -509,21 +522,32 @@ mod tests {
                 }
 
                 assert!(errors.contains_key("url6"));
+                println!("errors: {:?}", errors.get("url6"));
                 match errors.get("url6") {
-                    Some(ReadableClientError::AbiDecodedErrorType(
-                        AbiDecodedErrorType::Unknown(data),
-                    )) => {
-                        assert_eq!(data, &Vec::<u8>::new());
+                    Some(ReadableClientError::RpcProviderError(url, msg)) => {
+                        assert_eq!(url, "url6");
+                        assert_eq!(msg, "(code: 3, message: some other error, data: Some(String(\"1ac66908\")))");
                     }
                     _ => panic!("unexpected error type"),
                 }
 
                 assert!(errors.contains_key("url7"));
                 match errors.get("url7") {
-                    Some(ReadableClientError::AbiDecodedErrorType(
-                        AbiDecodedErrorType::Unknown(data),
-                    )) => {
-                        assert_eq!(data, &Vec::<u8>::new());
+                    Some(ReadableClientError::RpcProviderError(url, msg)) => {
+                        assert_eq!(url, "url7");
+                        assert_eq!(msg, "(code: 3, message: some other error, data: Some(Object {\"error\": String(\"some other error\")}))");
+                    }
+                    _ => panic!("unexpected error type"),
+                }
+
+                assert!(errors.contains_key("url8"));
+                match errors.get("url8") {
+                    Some(ReadableClientError::RpcProviderError(url, msg)) => {
+                        assert_eq!(url, "url8");
+                        assert_eq!(
+                            msg,
+                            "(code: 3, message: some other error, data: Some(Array [Number(1)]))"
+                        );
                     }
                     _ => panic!("unexpected error type"),
                 }
