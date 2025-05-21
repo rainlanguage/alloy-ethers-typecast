@@ -13,9 +13,9 @@ const TRANSACTION_RETRY_COUNT: usize = 15;
 #[derive(Clone, Debug)]
 pub enum WriteTransactionStatus<C: SolCall> {
     PendingPrepare(Box<WriteContractParameters<C>>),
-    PendingSign(TypedTransaction),
+    PendingSign(Box<TypedTransaction>),
     PendingSend(Bytes),
-    Confirmed(TransactionReceipt),
+    Confirmed(Box<TransactionReceipt>),
 }
 
 pub struct WriteTransaction<
@@ -61,14 +61,14 @@ impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<
     async fn prepare(&mut self) -> Result<(), WritableClientError> {
         if let WriteTransactionStatus::PendingPrepare(parameters) = &self.status {
             let tx_request = self.client.prepare_request(*parameters.clone()).await?;
-            self.update_status(WriteTransactionStatus::PendingSign(tx_request));
+            self.update_status(WriteTransactionStatus::PendingSign(Box::new(tx_request)));
         }
         Ok(())
     }
 
     async fn sign(&mut self) -> Result<(), WritableClientError> {
         if let WriteTransactionStatus::PendingSign(tx_request) = &self.status {
-            let signed_tx = self.client.sign_request(tx_request.clone()).await?;
+            let signed_tx = self.client.sign_request((**tx_request).clone()).await?;
             self.update_status(WriteTransactionStatus::PendingSend(signed_tx));
         }
         Ok(())
@@ -87,7 +87,7 @@ impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<
                     "Transaction did not receive {} confirmations",
                     self.confirmations,
                 )))?;
-            self.update_status(WriteTransactionStatus::Confirmed(receipt));
+            self.update_status(WriteTransactionStatus::Confirmed(Box::new(receipt)));
         }
         Ok(())
     }
