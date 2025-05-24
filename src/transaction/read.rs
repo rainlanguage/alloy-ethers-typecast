@@ -107,7 +107,7 @@ impl<P: JsonRpcClient> ReadableClient<P> {
 
             match provider.call(&typed_tx, block_id).await {
                 Ok(res) => {
-                    return C::abi_decode_returns(res.to_vec().as_slice(), true).map_err(|err| {
+                    return C::abi_decode_returns(res.to_vec().as_slice()).map_err(|err| {
                         ReadableClientError::ReadDecodeReturnError(err.to_string())
                     });
                 }
@@ -265,8 +265,8 @@ mod tests {
         // Call the read method
         let result = read_contract.read(parameters).await?;
 
-        let bar = result._0.bar;
-        let baz = result._0.baz;
+        let bar = result.bar;
+        let baz = result.baz;
 
         assert_eq!(bar, U256::from(42));
         assert_eq!(baz, Address::repeat_byte(0x11));
@@ -423,8 +423,8 @@ mod tests {
             .build()?;
         let result = read_contract.read(parameters).await?;
 
-        let bar = result._0.bar;
-        let baz = result._0.baz;
+        let bar = result.bar;
+        let baz = result.baz;
         assert_eq!(bar, U256::from(42));
         assert_eq!(baz, Address::repeat_byte(0x11));
 

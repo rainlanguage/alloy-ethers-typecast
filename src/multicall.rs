@@ -93,14 +93,13 @@ impl<T: SolCall> Multicall<T> {
             gas,
         };
 
-        let result = provider.read(params).await?;
+        let results = provider.read(params).await?;
 
-        Ok(result
-            .returnData
-            .iter()
+        Ok(results
+            .into_iter()
             .map(|v| {
                 if v.success {
-                    Ok(T::abi_decode_returns(&v.returnData, true).map_err(Into::into))
+                    Ok(T::abi_decode_returns(&v.returnData).map_err(Into::into))
                 } else {
                     Err(MulticallError::MulticallCallItemFailed(
                         v.returnData.clone().into(),
@@ -195,7 +194,7 @@ mod tests {
         let result = multicall.read(&provider, None, None, None).await?;
         let mut result_symbols = vec![];
         for res in result {
-            result_symbols.push(res??._0);
+            result_symbols.push(res??);
         }
 
         let expected = vec!["DAI".to_string(), "USDC".to_string()];
