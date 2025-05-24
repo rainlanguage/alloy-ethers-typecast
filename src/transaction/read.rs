@@ -1,10 +1,13 @@
 use crate::request_shim::{AlloyTransactionRequest, TransactionRequestShim};
 use crate::{alloy_u64_to_ethers, ethers_u256_to_alloy};
+use alloy::consensus::TypedTransaction;
+use alloy::network::{AnyNetwork, Network};
 use alloy::primitives::{Address, U256, U64};
+use alloy::providers::{Provider, ProviderBuilder};
 use alloy::sol_types::SolCall;
 use derive_builder::Builder;
-use ethers::providers::{Http, JsonRpcClient, Middleware, Provider, ProviderError, RpcError};
-use ethers::types::transaction::eip2718::TypedTransaction;
+// use ethers::providers::{Http, JsonRpcClient, Middleware, Provider, ProviderError, RpcError};
+// use ethers::types::transaction::eip2718::TypedTransaction;
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -43,16 +46,19 @@ pub struct ReadContractParameters<C: SolCall> {
 }
 
 #[derive(Clone)]
-pub struct ReadableClient<P: JsonRpcClient> {
-    providers: HashMap<String, Provider<P>>,
+pub struct ReadableClient<P: Provider<AnyNetwork>> {
+    providers: HashMap<String, P>,
 }
 
 pub type ReadableClientHttp = ReadableClient<Http>;
 
 impl ReadableClient<Http> {
     pub fn new_from_url(url: String) -> Result<Self, ReadableClientError> {
-        let provider = Provider::<Http>::try_from(url.clone())
-            .map_err(|err| ReadableClientError::CreateReadableClientHttpError(err.to_string()))?;
+        let rpc_url = url.parse()?;
+
+        let provider = ProviderBuilder::new().connect_http(rpc_url);
+        // .map_err(|err| ReadableClientError::CreateReadableClientHttpError(err.to_string()))?;
+
         Ok(Self {
             providers: HashMap::from([(url, provider)]),
         })
@@ -62,9 +68,8 @@ impl ReadableClient<Http> {
         let providers: HashMap<String, _> = urls
             .into_iter()
             .filter_map(|url| {
-                Provider::<Http>::try_from(url.clone())
-                    .ok()
-                    .map(|provider| (url, provider))
+                let rpc_url = url.parse().ok()?;
+                Some((url, ProviderBuilder::new().connect_http(rpc_url)))
             })
             .collect();
 
@@ -78,8 +83,8 @@ impl ReadableClient<Http> {
     }
 }
 
-impl<P: JsonRpcClient> ReadableClient<P> {
-    pub fn new(providers: HashMap<String, Provider<P>>) -> Self {
+impl<P: Provider<AnyNetwork>> ReadableClient<P> {
+    pub fn new(providers: HashMap<String, P>) -> Self {
         Self { providers }
     }
 
@@ -187,6 +192,8 @@ impl<P: JsonRpcClient> ReadableClient<P> {
 mod tests {
     use super::*;
     use alloy::primitives::{hex::encode, Address, U256};
+    use alloy::providers::mock::Asserter;
+    use alloy::rpc::json_rpc::ErrorPayload;
     use alloy::sol;
     use ethers::providers::{JsonRpcError, MockProvider, MockResponse};
     use serde_json::json;
@@ -433,50 +440,60 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_providers_read_error() -> anyhow::Result<()> {
-        let mock_provider1 = MockProvider::new();
-        let mock_provider2 = MockProvider::new();
-        let mock_provider3 = MockProvider::new();
-        let mock_provider4 = MockProvider::new();
-        let mock_provider5 = MockProvider::new();
+        let asserter1 = Asserter::new();
+        let asserter2 = Asserter::new();
+        let asserter3 = Asserter::new();
+        let asserter4 = Asserter::new();
+        let asserter5 = Asserter::new();
 
-        mock_provider1.push_response(MockResponse::Error(JsonRpcError {
+        let mock_provider1 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter1.clone());
+        let mock_provider2 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter2.clone());
+        let mock_provider3 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter3.clone());
+        let mock_provider4 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter4.clone());
+        let mock_provider5 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter5.clone());
+
+        asserter1.push_failure(ErrorPayload {
             code: 3,
             data: None,
-            message: "execution reverted".to_string(),
-        }));
-        mock_provider2.push_response(MockResponse::Error(JsonRpcError {
+            message: "execution reverted".into(),
+        });
+        asserter2.push_failure(ErrorPayload {
             code: 3,
             data: Some(json!(encode(vec![26, 198, 105, 8]))),
-            message: "some revert error".to_string(),
-        }));
-        mock_provider3.push_response(MockResponse::Error(JsonRpcError {
+            message: "some revert error".into(),
+        });
+        asserter3.push_failure(ErrorPayload {
             code: 3,
             data: Some(json!(encode(vec![26, 198, 105, 8]))),
-            message: "some other error".to_string(),
-        }));
-        mock_provider4.push_response(MockResponse::Error(JsonRpcError {
+            message: "some other error".into(),
+        });
+        asserter4.push_failure(ErrorPayload {
             code: 3,
             data: Some(json!({"error": "some other error"})),
-            message: "some other error".to_string(),
-        }));
-        mock_provider5.push_response(MockResponse::Error(JsonRpcError {
+            message: "some other error".into(),
+        });
+        asserter5.push_failure(ErrorPayload {
             code: 3,
             data: Some(json!(&vec![1])),
-            message: "some other error".to_string(),
-        }));
-
-        let client1 = Provider::new(mock_provider1);
-        let client2 = Provider::new(mock_provider2);
-        let client3 = Provider::new(mock_provider3);
-        let client4 = Provider::new(mock_provider4);
-        let client5 = Provider::new(mock_provider5);
+            message: "some other error".into(),
+        });
 
         let read_contract = ReadableClient::new(HashMap::from([
-            ("url4".to_string(), client1),
-            ("url5".to_string(), client2),
-            ("url6".to_string(), client3),
-            ("url7".to_string(), client4),
-            ("url8".to_string(), client5),
+            ("url4".to_string(), mock_provider1),
+            ("url5".to_string(), mock_provider2),
+            ("url6".to_string(), mock_provider3),
+            ("url7".to_string(), mock_provider4),
+            ("url8".to_string(), mock_provider5),
         ]));
 
         let parameters = ReadContractParametersBuilder::default()
@@ -560,30 +577,35 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_providers_get_block_number() -> anyhow::Result<()> {
-        let mock_provider1 = MockProvider::new();
-        let mock_provider2 = MockProvider::new();
-        let mock_provider3 = MockProvider::new();
+        let asserter1 = Asserter::new();
+        let asserter2 = Asserter::new();
+        let asserter3 = Asserter::new();
 
-        let foo_response = json!("0x0000006");
-        let mock_response = MockResponse::Value(foo_response);
-        let mock_error = MockResponse::Error(JsonRpcError {
+        let mock_provider1 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter1.clone());
+        let mock_provider2 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter2.clone());
+        let mock_provider3 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter3.clone());
+
+        let mock_response = "0x0000006";
+        let mock_error = ErrorPayload {
             code: 3,
             data: None,
-            message: "execution reverted".to_string(),
-        });
+            message: "execution reverted".into(),
+        };
 
-        mock_provider1.push_response(mock_error.clone());
-        mock_provider2.push_response(mock_error.clone());
-        mock_provider3.push_response(mock_response);
-
-        let client1 = Provider::new(mock_provider1);
-        let client2 = Provider::new(mock_provider2);
-        let client3 = Provider::new(mock_provider3);
+        asserter1.push_failure(mock_error.clone());
+        asserter2.push_failure(mock_error.clone());
+        asserter3.push_success(&mock_response);
 
         let read_contract = ReadableClient::new(HashMap::from([
-            ("url1".to_string(), client1),
-            ("url2".to_string(), client2),
-            ("url3".to_string(), client3),
+            ("url1".to_string(), mock_provider1),
+            ("url2".to_string(), mock_provider2),
+            ("url3".to_string(), mock_provider3),
         ]));
 
         let res = read_contract.get_block_number().await.unwrap();
@@ -594,23 +616,27 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_providers_get_block_number_error() -> anyhow::Result<()> {
-        let mock_provider1 = MockProvider::new();
-        let mock_provider2 = MockProvider::new();
+        let asserter1 = Asserter::new();
+        let asserter2 = Asserter::new();
 
-        let mock_error = MockResponse::Error(JsonRpcError {
+        let mock_provider1 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter1.clone());
+        let mock_provider2 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter2.clone());
+
+        let mock_error = ErrorPayload {
             code: 3,
             data: None,
-            message: "execution reverted".to_string(),
-        });
-        mock_provider1.push_response(mock_error.clone());
-        mock_provider2.push_response(mock_error.clone());
-
-        let client1 = Provider::new(mock_provider1);
-        let client2 = Provider::new(mock_provider2);
+            message: "execution reverted".into(),
+        };
+        asserter1.push_failure(mock_error.clone());
+        asserter2.push_failure(mock_error.clone());
 
         let read_contract = ReadableClient::new(HashMap::from([
-            ("url1".to_string(), client1),
-            ("url2".to_string(), client2),
+            ("url1".to_string(), mock_provider1),
+            ("url2".to_string(), mock_provider2),
         ]));
 
         let res = read_contract.get_block_number().await;
@@ -649,30 +675,33 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_providers_get_chainid() -> anyhow::Result<()> {
-        let mock_provider1 = MockProvider::new();
-        let mock_provider2 = MockProvider::new();
-        let mock_provider3 = MockProvider::new();
+        let asserter = Asserter::new();
 
-        let foo_response = json!("0x00000005");
-        let mock_response = MockResponse::Value(foo_response);
-        let mock_error = MockResponse::Error(JsonRpcError {
+        let mock_provider1 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter.clone());
+        let mock_provider2 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter.clone());
+        let mock_provider3 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter.clone());
+
+        let mock_response = "0x00000005";
+        let mock_error = ErrorPayload {
             code: 3,
             data: None,
-            message: "execution reverted".to_string(),
-        });
+            message: "execution reverted".into(),
+        };
 
-        mock_provider1.push_response(mock_error.clone());
-        mock_provider2.push_response(mock_error.clone());
-        mock_provider3.push_response(mock_response);
-
-        let client1 = Provider::new(mock_provider1);
-        let client2 = Provider::new(mock_provider2);
-        let client3 = Provider::new(mock_provider3);
+        asserter.push_failure(mock_error.clone());
+        asserter.push_failure(mock_error.clone());
+        asserter.push_success(&mock_response);
 
         let read_contract = ReadableClient::new(HashMap::from([
-            ("url1".to_string(), client1),
-            ("url2".to_string(), client2),
-            ("url3".to_string(), client3),
+            ("url1".to_string(), mock_provider1),
+            ("url2".to_string(), mock_provider2),
+            ("url3".to_string(), mock_provider3),
         ]));
 
         let res = read_contract.get_chainid().await.unwrap();
@@ -683,23 +712,24 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_providers_get_chainid_error() -> anyhow::Result<()> {
-        let mock_provider1 = MockProvider::new();
-        let mock_provider2 = MockProvider::new();
+        let asserter = Asserter::new();
 
-        let mock_error = MockResponse::Error(JsonRpcError {
+        let mock_provider1 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter.clone());
+        let mock_provider2 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter.clone());
+
+        asserter.push_failure(ErrorPayload {
             code: 3,
+            message: "execution reverted".into(),
             data: None,
-            message: "execution reverted".to_string(),
         });
-        mock_provider1.push_response(mock_error.clone());
-        mock_provider2.push_response(mock_error.clone());
-
-        let client1 = Provider::new(mock_provider1);
-        let client2 = Provider::new(mock_provider2);
 
         let read_contract = ReadableClient::new(HashMap::from([
-            ("url1".to_string(), client1),
-            ("url2".to_string(), client2),
+            ("url1".to_string(), mock_provider1),
+            ("url2".to_string(), mock_provider2),
         ]));
 
         let res = read_contract.get_chainid().await;
