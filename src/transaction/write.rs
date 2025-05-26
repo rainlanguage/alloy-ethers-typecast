@@ -78,18 +78,20 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
             Ok(res) => res,
             Err(provider_err) => {
                 let error_to_insert = if let Some(rpc_err) = provider_err.as_error_response() {
-                    if rpc_err.is_revert() {
-                        match AbiDecodedErrorType::try_from_json_rpc_error(rpc_err.clone()).await {
-                            Ok(decoded_err) => {
-                                WritableClientError::AbiDecodedErrorType(decoded_err)
-                            }
-                            Err(decode_failed_err) => {
-                                WritableClientError::AbiDecodeFailedErrors(decode_failed_err)
-                            }
-                        }
-                    } else {
-                        WritableClientError::RpcError(rpc_err.to_string())
-                    }
+                    // TODO: add this back when ethers is removed from this module
+
+                    // if rpc_err.is_revert() {
+                    //     match AbiDecodedErrorType::try_from_json_rpc_error(rpc_err.clone()).await {
+                    //         Ok(decoded_err) => {
+                    //             WritableClientError::AbiDecodedErrorType(decoded_err)
+                    //         }
+                    //         Err(decode_failed_err) => {
+                    //             WritableClientError::AbiDecodeFailedErrors(decode_failed_err)
+                    //         }
+                    //     }
+                    // } else {
+                    WritableClientError::RpcError(rpc_err.to_string())
+                    // }
                 } else {
                     WritableClientError::WriteConfirmationError(provider_err)
                 };
