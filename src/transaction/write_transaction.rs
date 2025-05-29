@@ -1,10 +1,9 @@
 use crate::transaction::{WritableClient, WritableClientError, WriteContractParameters};
+use alloy::network::{AnyNetwork, NetworkWallet};
+use alloy::primitives::Bytes;
+use alloy::providers::Provider;
+use alloy::rpc::types::{TransactionReceipt, TransactionRequest};
 use alloy::sol_types::SolCall;
-use ethers::middleware::SignerMiddleware;
-use ethers::providers::Middleware;
-use ethers::signers::Signer;
-use ethers::types::transaction::eip2718::TypedTransaction;
-use ethers::types::{Bytes, TransactionReceipt};
 use std::time::Duration;
 
 const TRANSACTION_RETRY_INTERVAL_SECONDS: u64 = 5;
@@ -13,28 +12,27 @@ const TRANSACTION_RETRY_COUNT: usize = 15;
 #[derive(Clone, Debug)]
 pub enum WriteTransactionStatus<C: SolCall> {
     PendingPrepare(Box<WriteContractParameters<C>>),
-    PendingSign(Box<TypedTransaction>),
+    PendingSign(TransactionRequest),
     PendingSend(Bytes),
     Confirmed(Box<TransactionReceipt>),
 }
 
 pub struct WriteTransaction<
-    M: Middleware,
-    S: Signer,
+    P: Provider<AnyNetwork> + Clone,
     C: SolCall + Clone,
     F: Fn(WriteTransactionStatus<C>),
 > {
-    pub client: WritableClient<M, S>,
+    pub client: WritableClient<P>,
     pub status: WriteTransactionStatus<C>,
     pub confirmations: u8,
     pub status_changed: F,
 }
 
-impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<C>)>
-    WriteTransaction<M, S, C, F>
+impl<P: Provider<AnyNetwork> + Clone, C: SolCall + Clone, F: Fn(WriteTransactionStatus<C>)>
+    WriteTransaction<W, C, F>
 {
     pub fn new(
-        client: SignerMiddleware<M, S>,
+        client: P,
         parameters: WriteContractParameters<C>,
         confirmations: u8,
         status_changed: F,
@@ -60,22 +58,14 @@ impl<M: Middleware, S: Signer, C: SolCall + Clone, F: Fn(WriteTransactionStatus<
 
     async fn prepare(&mut self) -> Result<(), WritableClientError> {
         if let WriteTransactionStatus::PendingPrepare(parameters) = &self.status {
-            let tx_request = self.client.prepare_request(*parameters.clone()).await?;
-            self.update_status(WriteTransactionStatus::PendingSign(Box::new(tx_request)));
-        }
-        Ok(())
-    }
-
-    async fn sign(&mut self) -> Result<(), WritableClientError> {
-        if let WriteTransactionStatus::PendingSign(tx_request) = &self.status {
-            let signed_tx = self.client.sign_request((**tx_request).clone()).await?;
-            self.update_status(WriteTransactionStatus::PendingSend(signed_tx));
+            let tx_request = parameters.build_transaction_request();
+            self.update_status(WriteTransactionStatus::PendingSign(tx_request));
         }
         Ok(())
     }
 
     async fn send(&mut self) -> Result<(), WritableClientError> {
-        if let WriteTransactionStatus::PendingSend(signed_tx) = &self.status {
+        if let WriteTransactionStatus::PendingSign(tx_request) = &self.status {
             let pending_tx = self.client.send_request(signed_tx.clone()).await?;
             let receipt = pending_tx
                 .interval(Duration::from_secs(TRANSACTION_RETRY_INTERVAL_SECONDS))
