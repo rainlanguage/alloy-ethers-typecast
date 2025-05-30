@@ -13,7 +13,6 @@ ethers = { version = "2.0.14", features = ["legacy", "ledger"] }
 # alloy = { version = "1.0.9", features = ["json-rpc", "rand", "sol-types"] }
 alloy = { git = "https://github.com/0xgleb/alloy", features = [
     "json-rpc",
-    "rand",
     "sol-types",
 ] }
 once_cell = "1.17.1"
@@ -25,17 +24,15 @@ async-trait = "0.1.77"
 thiserror = "1.0.56"
 tracing-subscriber = "0.3.18"
 serde = "1.0.195"
-rain-error-decoding = { git = "https://github.com/rainlanguage/rain.error", rev = "4250adf4944a9cd5230c043a96df99f261c814db" }
+rain-error-decoding = { git = "https://github.com/rainlanguage/rain.error", rev = "63410e90183de44a804f3d10b82151b55af4c7d8" }
 url = "2.5.4"
-rand = "0.9.1"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-getrandom = { version = "0.3.3", features = ["wasm_js"] }
+getrandom = { version = "0.2.11", features = ["js", "js-sys"] }
 
 [patch.crates-io]
 alloy = { git = "https://github.com/0xgleb/alloy", features = [
     "json-rpc",
-    "rand",
     "sol-types",
 ] }
 
