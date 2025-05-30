@@ -10,11 +10,7 @@ homepage = "https://github.com/rainlanguage/alloy-ethers-typecast"
 
 [dependencies]
 ethers = { version = "2.0.14", features = ["legacy", "ledger"] }
-# alloy = { version = "1.0.9", features = ["json-rpc", "rand", "sol-types"] }
-alloy = { git = "https://github.com/0xgleb/alloy", features = [
-    "json-rpc",
-    "sol-types",
-] }
+alloy = { version = "1.0.9", features = ["json-rpc", "rand", "sol-types"] }
 once_cell = "1.17.1"
 reqwest = { version = "0.11.17", features = ["json"] }
 tracing = "0.1.37"
@@ -28,13 +24,7 @@ rain-error-decoding = { git = "https://github.com/rainlanguage/rain.error", rev 
 url = "2.5.4"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-getrandom = { version = "0.2.11", features = ["js", "js-sys"] }
-
-[patch.crates-io]
-alloy = { git = "https://github.com/0xgleb/alloy", features = [
-    "json-rpc",
-    "sol-types",
-] }
+getrandom = { version = "0.3.3", features = ["wasm_js"] }
 
 [dev-dependencies]
 tokio = { version = "1.28.0", features = ["full"] }
