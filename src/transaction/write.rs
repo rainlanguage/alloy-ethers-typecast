@@ -1,11 +1,8 @@
-use alloy::consensus::SignableTransaction;
 use alloy::hex;
-use alloy::network::{AnyNetwork, TransactionBuilder};
+use alloy::network::{AnyNetwork, AnyReceiptEnvelope, TransactionBuilder};
 use alloy::primitives::hex::{decode, FromHexError};
-use alloy::primitives::{Address, Bytes, U256};
-use alloy::providers::{
-    PendingTransaction, PendingTransactionBuilder, PendingTransactionError, Provider,
-};
+use alloy::primitives::{Address, U256};
+use alloy::providers::{PendingTransactionBuilder, PendingTransactionError, Provider};
 use alloy::rpc::types::{TransactionReceipt, TransactionRequest};
 use alloy::serde::WithOtherFields;
 use alloy::sol_types::SolCall;
@@ -24,7 +21,7 @@ pub enum WritableClientError {
     #[error("failed to send transaction: {0}")]
     WriteSendTxError(String),
     #[error(transparent)]
-    WriteConfirmationError(ProviderError),
+    WriteConfirmationError(PendingTransactionError),
     #[error("transaction failed")]
     WriteFailedTxError(),
     #[error(transparent)]
@@ -93,15 +90,16 @@ impl<P: Provider<AnyNetwork> + Clone> WritableClient<P> {
     pub async fn write<C: SolCall>(
         &self,
         parameters: WriteContractParameters<C>,
-    ) -> Result<TransactionReceipt, WritableClientError> {
+    ) -> Result<TransactionReceipt<AnyReceiptEnvelope<alloy::rpc::types::Log>>, WritableClientError>
+    {
         let pending_tx = self.write_pending(parameters, 4).await?;
 
         info!("Transaction submitted. Awaiting block confirmations...");
 
-        let res = pending_tx.watch().await;
+        let res = pending_tx.get_receipt().await;
 
-        let tx_confirmation = match res {
-            Ok(res) => res,
+        let receipt = match res {
+            Ok(receipt) => receipt,
             Err(PendingTransactionError::TransportError(RpcError::ErrorResp(err_payload))) => {
                 return Err(
                     match AbiDecodedErrorType::try_from_json_rpc_error(err_payload).await {
@@ -117,17 +115,9 @@ impl<P: Provider<AnyNetwork> + Clone> WritableClient<P> {
             }
         };
 
-        let tx_receipt = match tx_confirmation {
-            Some(receipt) => receipt,
-            None => return Err(WritableClientError::WriteFailedTxError()),
-        };
-
         info!("Transaction Confirmed");
-        info!(
-            "✅ Hash : 0x{}",
-            hex::encode(tx_receipt.transaction_hash.as_bytes())
-        );
-        Ok(tx_receipt)
+        info!("✅ Hash : 0x{}", hex::encode(receipt.transaction_hash));
+        Ok(receipt.inner)
     }
 
     // Executes a write function but returns a PendingTransaction instance
@@ -182,11 +172,12 @@ impl<P: Provider<AnyNetwork> + Clone> WritableClient<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::transaction::mock_middleware::{MockJsonRpcClient, MockMiddleware};
-    use alloy::primitives::{Address, Bytes, B160, U256};
+    use alloy::primitives::{Address, U256};
+    use alloy::providers::mock::Asserter;
     use alloy::providers::ProviderBuilder;
     use alloy::signers::local::LocalSigner;
     use alloy::sol;
+    use serde_json::json;
     use tracing_subscriber;
     use tracing_subscriber::FmtSubscriber;
 
@@ -237,7 +228,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_write() -> anyhow::Result<()> {
+    async fn test_write() {
         let asserter = Asserter::new();
         let wallet = LocalSigner::random();
 
@@ -253,7 +244,8 @@ mod tests {
                 b: U256::from(10),
             })
             .address(Address::repeat_byte(0x22))
-            .build()?;
+            .build()
+            .unwrap();
 
         // Create a mock response for the transaction hash
         let mock_tx_hash = "0x0000000000000000000000000000000000000000000000000000000000000001";
@@ -272,9 +264,7 @@ mod tests {
         let writable_client = WritableClient::new(provider);
 
         // Call the write method
-        let _ = writable_client.write(parameters).await?;
-
-        Ok(())
+        let _ = writable_client.write(parameters).await.unwrap();
     }
 
     #[allow(dead_code)]

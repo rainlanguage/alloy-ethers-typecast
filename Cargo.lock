@@ -4174,10 +4174,10 @@ checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
 [[package]]
 name = "rain-error-decoding"
 version = "0.1.0"
-source = "git+https://github.com/rainlanguage/rain.error?rev=371f5d3955d6668c799316f8e39e639a56136686#371f5d3955d6668c799316f8e39e639a56136686"
+source = "git+https://github.com/rainlanguage/rain.error?rev=4250adf4944a9cd5230c043a96df99f261c814db#4250adf4944a9cd5230c043a96df99f261c814db"
 dependencies = [
  "alloy",
- "getrandom 0.3.3",
+ "getrandom 0.2.16",
  "once_cell",
  "reqwest 0.11.27",
  "serde",

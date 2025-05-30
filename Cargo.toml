@@ -20,7 +20,7 @@ async-trait = "0.1.77"
 thiserror = "1.0.56"
 tracing-subscriber = "0.3.18"
 serde = "1.0.195"
-rain-error-decoding = { git = "https://github.com/rainlanguage/rain.error", rev = "371f5d3955d6668c799316f8e39e639a56136686" }
+rain-error-decoding = { git = "https://github.com/rainlanguage/rain.error", rev = "4250adf4944a9cd5230c043a96df99f261c814db" }
 url = "2.5.4"
 rand = "0.9.1"
 
