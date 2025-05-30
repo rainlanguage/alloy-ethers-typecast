@@ -1,4 +1,3 @@
-mod mock_middleware;
 pub mod read;
 pub mod write;
 pub mod write_transaction;

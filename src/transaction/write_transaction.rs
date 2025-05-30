@@ -133,29 +133,6 @@ mod tests {
         asserter
             .push_success(&"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 
-        // // Create a mock response for the transaction hash
-        // let mock_tx_hash = "0x0000000000000000000000000000000000000000000000000000000000000001";
-        // asserter.push_success(&mock_tx_hash);
-
-        // let mock_fee_history = json!({
-        //   "oldestBlock": "0x1554ec2",
-        //   "reward": [
-        //     [ "0x4b571c0", "0x2f23c46c" ],
-        //     [ "0x396c1b9", "0x4d579d50" ],
-        //     [ "0x77359400", "0x77359400" ],
-        //     [ "0x2faf080", "0x3b9aca00" ]
-        //   ],
-        //   "baseFeePerGas": [ "0x3af6c9f1", "0x3b19496d", "0x36647614", "0x302c838b", "0x359f85b3" ],
-        //   "gasUsedRatio": [ 0.5091416944444445, 0.18145872222222223, 0.04269041059401201, 0.9524652037856148 ],
-        //   "baseFeePerBlobGas": [ "0x320b8540d", "0x384cf5f4e", "0x3f5694c1f", "0x44831ac79", "0x3f5694c1f" ],
-        //   "blobGasUsedRatio": [ 1, 1, 0.8333333333333334, 0.16666666666666666 ]
-        // });
-        // asserter.push_success(&mock_fee_history);
-
-        // // Create a mock response for eth_getTransactionCount (nonce)
-        // let mock_nonce = "0x1";
-        // asserter.push_success(&mock_nonce);
-
         // mock eth_getTransactionReceipt response, json transaction receipt
         let mock_receipt = json!({
             "blockHash": "0xa957d47df264a31badc3ae823e10ac1d444b098d9b73d204c40426e57f47e8c3",
