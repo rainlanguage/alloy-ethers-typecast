@@ -82,8 +82,6 @@ impl<P: Provider<AnyNetwork> + Clone, C: SolCall + Clone, F: Fn(WriteTransaction
 
 #[cfg(test)]
 mod tests {
-    use crate::transaction::WriteContractParametersBuilder;
-
     use super::*;
     use alloy::primitives::{Address, U256};
     use alloy::providers::mock::Asserter;
@@ -128,10 +126,16 @@ mod tests {
             value: Some(U256::from(100)),
         };
 
-        // Create a mock response for the transaction hash
-        let mock_tx_hash = "0x0000000000000000000000000000000000000000000000000000000000000001";
-        asserter.push_success(&mock_tx_hash);
-        asserter.push_success(&mock_tx_hash.clone());
+        // eth_chainId response, chain id
+        asserter.push_success(&"0x1");
+
+        // eth_sendRawTransaction response, transaction hash
+        asserter
+            .push_success(&"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+
+        // // Create a mock response for the transaction hash
+        // let mock_tx_hash = "0x0000000000000000000000000000000000000000000000000000000000000001";
+        // asserter.push_success(&mock_tx_hash);
 
         // let mock_fee_history = json!({
         //   "oldestBlock": "0x1554ec2",
@@ -152,7 +156,7 @@ mod tests {
         // let mock_nonce = "0x1";
         // asserter.push_success(&mock_nonce);
 
-        // Create a mock response for the transaction receipt
+        // mock eth_getTransactionReceipt response, json transaction receipt
         let mock_receipt = json!({
             "blockHash": "0xa957d47df264a31badc3ae823e10ac1d444b098d9b73d204c40426e57f47e8c3",
             "blockNumber": "0xeff35f",
@@ -169,6 +173,7 @@ mod tests {
             "transactionIndex": "0x66",
             "type": "0x2"
         });
+        asserter.push_success(&mock_receipt);
         asserter.push_success(&mock_receipt);
 
         WriteTransaction::new(provider, parameters, 1, |_| {})

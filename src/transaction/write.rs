@@ -247,17 +247,53 @@ mod tests {
             .build()
             .unwrap();
 
-        // Create a mock response for the transaction hash
-        let mock_tx_hash = "0x0000000000000000000000000000000000000000000000000000000000000001";
-        asserter.push_success(&mock_tx_hash);
+        // eth_estimateGas response
+        asserter.push_success(&"0x5208");
 
-        // Create a mock response for the transaction receipt
+        // eth_feeHistory response
+        asserter.push_success(&json!({
+          "oldestBlock": "0x1554ec2",
+          "reward": [
+            [ "0x4b571c0", "0x2f23c46c" ],
+            [ "0x396c1b9", "0x4d579d50" ],
+            [ "0x77359400", "0x77359400" ],
+            [ "0x2faf080", "0x3b9aca00" ]
+          ],
+          "baseFeePerGas": [ "0x3af6c9f1", "0x3b19496d", "0x36647614", "0x302c838b", "0x359f85b3" ],
+          "gasUsedRatio": [ 0.5091416944444445, 0.18145872222222223, 0.04269041059401201, 0.9524652037856148 ],
+          "baseFeePerBlobGas": [ "0x320b8540d", "0x384cf5f4e", "0x3f5694c1f", "0x44831ac79", "0x3f5694c1f" ],
+          "blobGasUsedRatio": [ 1, 1, 0.8333333333333334, 0.16666666666666666 ]
+        }));
+
+        // eth_getTransactionCount response, nonce
+        asserter.push_success(&"0x123");
+
+        // eth_chainId response, chain id
+        asserter.push_success(&"0x1");
+
+        // eth_sendRawTransaction response, transaction hash
+        asserter
+            .push_success(&"0x0000000000000000000000000000000000000000000000000000000000000001");
+
+        // mock eth_getTransactionReceipt response, json transaction receipt
         let mock_receipt = json!({
-            "transactionHash": mock_tx_hash,
-            "blockNumber": "0x1",
-            "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000001",
-            "status": "0x1"
+            "blockHash": "0xa957d47df264a31badc3ae823e10ac1d444b098d9b73d204c40426e57f47e8c3",
+            "blockNumber": "0xeff35f",
+            "contractAddress": null,
+            "cumulativeGasUsed": "0xa12515",
+            "effectiveGasPrice": "0x5a9c688d4",
+            "from": "0x6221a03dae12247eb398fd867784cacfdcfff4e7",
+            "gasUsed": "0xb4c8",
+            "logs": [],
+            "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000080000000000000000200000000000000000000020000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020001000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000010200000000000000000000000000000000000000000000000000000020000",
+            "status": "0x1",
+            "to": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "transactionHash": "0x85d995eba9763907fdf35cd2034144dd9d53ce32cbec21349d4b12823c6860c5",
+            "transactionIndex": "0x66",
+            "type": "0x2"
         });
+        asserter.push_success(&mock_receipt);
+        asserter.push_success(&mock_receipt);
         asserter.push_success(&mock_receipt);
 
         // Create a WritableClient instance with the mock client
