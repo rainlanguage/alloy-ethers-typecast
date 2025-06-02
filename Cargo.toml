@@ -20,7 +20,7 @@ async-trait = "0.1.77"
 thiserror = "1.0.56"
 tracing-subscriber = "0.3.18"
 serde = "1.0.195"
-rain-error-decoding = { git = "https://github.com/rainlanguage/rain.error", rev = "63410e90183de44a804f3d10b82151b55af4c7d8" }
+rain-error-decoding = { git = "https://github.com/rainlanguage/rain.error", rev = "bf08b5ab305287fc49408a441d6375f35dc280db" }
 url = "2.5.4"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
