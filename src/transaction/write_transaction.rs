@@ -4,9 +4,6 @@ use alloy::providers::Provider;
 use alloy::rpc::types::{TransactionReceipt, TransactionRequest};
 use alloy::sol_types::SolCall;
 
-// const TRANSACTION_RETRY_INTERVAL_SECONDS: u64 = 5;
-// const TRANSACTION_RETRY_COUNT: usize = 15;
-
 #[derive(Clone, Debug)]
 pub enum WriteTransactionStatus<C: SolCall> {
     PendingPrepare(Box<WriteContractParameters<C>>),
