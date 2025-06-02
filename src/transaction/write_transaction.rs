@@ -10,7 +10,7 @@ use alloy::sol_types::SolCall;
 #[derive(Clone, Debug)]
 pub enum WriteTransactionStatus<C: SolCall> {
     PendingPrepare(Box<WriteContractParameters<C>>),
-    PendingSignAndSend(TransactionRequest),
+    PendingSignAndSend(Box<TransactionRequest>),
     Confirmed(Box<TransactionReceipt<AnyReceiptEnvelope<alloy::rpc::types::Log>>>),
 }
 
@@ -55,16 +55,17 @@ impl<P: Provider<AnyNetwork> + Clone, C: SolCall + Clone, F: Fn(WriteTransaction
     async fn prepare(&mut self) -> Result<(), WritableClientError> {
         if let WriteTransactionStatus::PendingPrepare(parameters) = &self.status {
             let tx_request = parameters.build_transaction_request();
-            self.update_status(WriteTransactionStatus::PendingSignAndSend(tx_request));
+            self.update_status(WriteTransactionStatus::PendingSignAndSend(Box::new(
+                tx_request,
+            )));
         }
         Ok(())
     }
 
     async fn sign_and_send(&mut self) -> Result<(), WritableClientError> {
         if let WriteTransactionStatus::PendingSignAndSend(tx_request) = &self.status {
-            let pending_tx = self.client.send_request(tx_request.to_owned()).await?;
+            let pending_tx = self.client.send_request(*tx_request.to_owned()).await?;
             let receipt = pending_tx
-                // NOTE: retries are built-in but configured at the provider level
                 .with_required_confirmations(self.confirmations.into())
                 .get_receipt()
                 .await
