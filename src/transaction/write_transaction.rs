@@ -1,6 +1,6 @@
 use crate::transaction::{WritableClient, WritableClientError, WriteContractParameters};
 use alloy::network::{AnyNetwork, AnyReceiptEnvelope};
-use alloy::providers::Provider;
+use alloy::providers::{Provider, WalletProvider};
 use alloy::rpc::types::{TransactionReceipt, TransactionRequest};
 use alloy::sol_types::SolCall;
 
@@ -12,7 +12,7 @@ pub enum WriteTransactionStatus<C: SolCall> {
 }
 
 pub struct WriteTransaction<
-    P: Provider<AnyNetwork> + Clone,
+    P: Provider<AnyNetwork> + WalletProvider<AnyNetwork> + Clone,
     C: SolCall + Clone,
     F: Fn(WriteTransactionStatus<C>),
 > {
@@ -22,8 +22,11 @@ pub struct WriteTransaction<
     pub status_changed: F,
 }
 
-impl<P: Provider<AnyNetwork> + Clone, C: SolCall + Clone, F: Fn(WriteTransactionStatus<C>)>
-    WriteTransaction<P, C, F>
+impl<
+        P: Provider<AnyNetwork> + WalletProvider<AnyNetwork> + Clone,
+        C: SolCall + Clone,
+        F: Fn(WriteTransactionStatus<C>),
+    > WriteTransaction<P, C, F>
 {
     pub fn new(
         client: P,
@@ -120,7 +123,9 @@ mod tests {
     }
 
     // Helper function to create a mock provider
-    fn create_mock_provider(asserter: Asserter) -> impl Provider<AnyNetwork> + Clone {
+    fn create_mock_provider(
+        asserter: Asserter,
+    ) -> impl Provider<AnyNetwork> + WalletProvider<AnyNetwork> + Clone {
         let wallet = LocalSigner::random();
         ProviderBuilder::new()
             .wallet(wallet)

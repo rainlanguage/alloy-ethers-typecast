@@ -2,7 +2,9 @@ use alloy::hex;
 use alloy::network::{AnyNetwork, AnyReceiptEnvelope, TransactionBuilder};
 use alloy::primitives::hex::{decode, FromHexError};
 use alloy::primitives::{Address, U256};
-use alloy::providers::{PendingTransactionBuilder, PendingTransactionError, Provider};
+use alloy::providers::{
+    PendingTransactionBuilder, PendingTransactionError, Provider, WalletProvider,
+};
 use alloy::rpc::types::{TransactionReceipt, TransactionRequest};
 use alloy::serde::WithOtherFields;
 use alloy::sol_types::SolCall;
@@ -78,10 +80,9 @@ impl<C: SolCall> WriteContractParameters<C> {
 }
 
 #[derive(Clone)]
-pub struct WritableClient<P: Provider<AnyNetwork> + Clone>(P);
+pub struct WritableClient<P: Provider<AnyNetwork> + WalletProvider<AnyNetwork> + Clone>(P);
 
-impl<P: Provider<AnyNetwork> + Clone> WritableClient<P> {
-    // Create a new WriteContract instance, passing a client
+impl<P: Provider<AnyNetwork> + WalletProvider<AnyNetwork> + Clone> WritableClient<P> {
     pub fn new(client: P) -> Self {
         Self(client)
     }
