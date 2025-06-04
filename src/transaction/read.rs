@@ -1,5 +1,6 @@
 use alloy::network::{AnyNetwork, TransactionBuilder};
 use alloy::primitives::{Address, U64};
+use alloy::providers::mock::Asserter;
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::types::TransactionRequest;
 use alloy::serde::WithOtherFields;
@@ -8,6 +9,7 @@ use alloy::transports::{RpcError, TransportErrorKind};
 use derive_builder::Builder;
 use std::collections::HashMap;
 use thiserror::Error;
+use url::Url;
 
 use rain_error_decoding::{AbiDecodeFailedErrors, AbiDecodedErrorType};
 
@@ -63,7 +65,11 @@ impl ReadableClient {
         let providers: HashMap<String, _> = urls
             .into_iter()
             .filter_map(|url| {
-                let rpc_url = url.parse().ok()?;
+                let rpc_url: Url = url.parse().ok()?;
+                if !rpc_url.scheme().starts_with("http") {
+                    return None;
+                }
+
                 let provider: Box<dyn Provider<AnyNetwork>> = Box::new(
                     ProviderBuilder::new()
                         .network::<AnyNetwork>()
@@ -79,6 +85,18 @@ impl ReadableClient {
             ))
         } else {
             Ok(Self { providers })
+        }
+    }
+
+    pub fn new_mocked(asserter: Asserter) -> Self {
+        let provider = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter);
+        Self {
+            providers: HashMap::from([(
+                "mocked_url".to_string(),
+                Box::new(provider) as Box<dyn Provider<AnyNetwork>>,
+            )]),
         }
     }
 
@@ -185,7 +203,6 @@ impl ReadableClient {
 mod tests {
     use super::*;
     use alloy::primitives::{Address, U256};
-    use alloy::providers::mock::Asserter;
     use alloy::rpc::json_rpc::ErrorPayload;
     use alloy::sol;
     use serde_json::json;
@@ -236,23 +253,10 @@ mod tests {
     async fn test_read_return() -> anyhow::Result<()> {
         let asserter = Asserter::new();
 
-        let mock_provider = ProviderBuilder::new()
-            .network::<AnyNetwork>()
-            .connect_mocked_client(asserter.clone());
-
-        let bytes_string = "0x000000000000000000000000000000000000000000000000000000000000002a0000000000000000000000001111111111111111111111111111111111111111";
-
-        let mock_response = json!(bytes_string);
-
-        asserter.push_success(&mock_response.clone());
-        asserter.push_success(&mock_response.clone());
-        asserter.push_success(&mock_response);
+        asserter.push_success(&json!("0x000000000000000000000000000000000000000000000000000000000000002a0000000000000000000000001111111111111111111111111111111111111111"));
 
         // Create a ReadableClient instance with the mock provider
-        let read_contract = ReadableClient::new(HashMap::from([(
-            "url".to_string(),
-            Box::new(mock_provider) as Box<dyn Provider<AnyNetwork>>,
-        )]));
+        let read_contract = ReadableClient::new_mocked(asserter);
 
         // Create a ReadContractParameters instance
         let parameters = ReadContractParametersBuilder::default()
@@ -279,16 +283,9 @@ mod tests {
     async fn test_get_chainid() -> anyhow::Result<()> {
         let asserter = Asserter::new();
 
-        let mock_provider = ProviderBuilder::new()
-            .network::<AnyNetwork>()
-            .connect_mocked_client(asserter.clone());
-
         asserter.push_success(&5_u64);
 
-        let read_contract = ReadableClient::new(HashMap::from([(
-            "url".to_string(),
-            Box::new(mock_provider) as Box<dyn Provider<AnyNetwork>>,
-        )]));
+        let read_contract = ReadableClient::new_mocked(asserter);
         let res = read_contract.get_chainid().await.unwrap();
 
         assert_eq!(res, 5_u64);
@@ -299,17 +296,9 @@ mod tests {
     #[tokio::test]
     async fn test_get_block_number() -> anyhow::Result<()> {
         let asserter = Asserter::new();
-
-        let mock_provider = ProviderBuilder::new()
-            .network::<AnyNetwork>()
-            .connect_mocked_client(asserter.clone());
-
         asserter.push_success(&6_u64);
 
-        let read_contract = ReadableClient::new(HashMap::from([(
-            "url".to_string(),
-            Box::new(mock_provider) as Box<dyn Provider<AnyNetwork>>,
-        )]));
+        let read_contract = ReadableClient::new_mocked(asserter);
         let res = read_contract.get_block_number().await.unwrap();
 
         assert_eq!(res, 6_u64);
@@ -321,22 +310,14 @@ mod tests {
     async fn test_decodable_error() -> anyhow::Result<()> {
         let asserter = Asserter::new();
 
-        let mock_provider = ProviderBuilder::new()
-            .network::<AnyNetwork>()
-            .connect_mocked_client(asserter.clone());
-
         let mock_error = ErrorPayload {
             code: 3,
             data: Some(RawValue::from_string(r#""0x1ac66908""#.to_string()).unwrap()),
             message: "execution reverted".into(),
         };
-
         asserter.push_failure(mock_error);
 
-        let read_contract = ReadableClient::new(HashMap::from([(
-            "url".to_string(),
-            Box::new(mock_provider) as Box<dyn Provider<AnyNetwork>>,
-        )]));
+        let read_contract = ReadableClient::new_mocked(asserter);
 
         // Create a ReadContractParameters instance
         let parameters = ReadContractParametersBuilder::default()
@@ -358,8 +339,8 @@ mod tests {
             ReadableClientError::AllProvidersFailed(errors) => {
                 assert_eq!(errors.len(), 1);
 
-                assert!(errors.contains_key("url"));
-                match errors.get("url") {
+                assert!(errors.contains_key("mocked_url"));
+                match errors.get("mocked_url") {
                     Some(ReadableClientError::AbiDecodedErrorType(
                         AbiDecodedErrorType::Known {
                             name,
