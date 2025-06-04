@@ -49,6 +49,8 @@ pub struct ReadableClient {
     providers: HashMap<String, Box<dyn Provider<AnyNetwork>>>,
 }
 
+const MOCKED_PROVIDER_KEY: &str = "mocked_url";
+
 impl ReadableClient {
     pub async fn new_from_url(url: String) -> Result<Self, ReadableClientError> {
         let provider = ProviderBuilder::new()
@@ -94,7 +96,7 @@ impl ReadableClient {
             .connect_mocked_client(asserter);
         Self {
             providers: HashMap::from([(
-                "mocked_url".to_string(),
+                MOCKED_PROVIDER_KEY.to_string(),
                 Box::new(provider) as Box<dyn Provider<AnyNetwork>>,
             )]),
         }
@@ -339,8 +341,8 @@ mod tests {
             ReadableClientError::AllProvidersFailed(errors) => {
                 assert_eq!(errors.len(), 1);
 
-                assert!(errors.contains_key("mocked_url"));
-                match errors.get("mocked_url") {
+                assert!(errors.contains_key(MOCKED_PROVIDER_KEY));
+                match errors.get(MOCKED_PROVIDER_KEY) {
                     Some(ReadableClientError::AbiDecodedErrorType(
                         AbiDecodedErrorType::Known {
                             name,
