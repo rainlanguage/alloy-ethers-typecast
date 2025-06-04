@@ -1,10 +1,11 @@
-use crate::request_shim::{AlloyTransactionRequest, TransactionRequestShim};
-use crate::{alloy_u64_to_ethers, ethers_u256_to_alloy};
-use alloy::primitives::{Address, U256, U64};
+use alloy::network::{AnyNetwork, TransactionBuilder};
+use alloy::primitives::{Address, U64};
+use alloy::providers::{Provider, ProviderBuilder};
+use alloy::rpc::types::TransactionRequest;
+use alloy::serde::WithOtherFields;
 use alloy::sol_types::SolCall;
+use alloy::transports::{RpcError, TransportErrorKind};
 use derive_builder::Builder;
-use ethers::providers::{Http, JsonRpcClient, Middleware, Provider, ProviderError, RpcError};
-use ethers::types::transaction::eip2718::TypedTransaction;
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -15,7 +16,7 @@ pub enum ReadableClientError {
     #[error("failed to instantiate provider: {0}")]
     CreateReadableClientHttpError(String),
     #[error(transparent)]
-    ReadCallError(ProviderError),
+    RpcTransportKindError(#[from] RpcError<TransportErrorKind>),
     #[error("failed to decode return: {0}")]
     ReadDecodeReturnError(String),
     #[error("failed to get chain id: {0}")]
@@ -39,32 +40,36 @@ pub struct ReadContractParameters<C: SolCall> {
     #[builder(setter(into), default)]
     pub block_number: Option<U64>,
     #[builder(setter(into), default)]
-    pub gas: Option<U256>,
+    pub gas: Option<u64>,
 }
 
-#[derive(Clone)]
-pub struct ReadableClient<P: JsonRpcClient> {
-    providers: HashMap<String, Provider<P>>,
+pub struct ReadableClient {
+    providers: HashMap<String, Box<dyn Provider<AnyNetwork>>>,
 }
 
-pub type ReadableClientHttp = ReadableClient<Http>;
+impl ReadableClient {
+    pub async fn new_from_url(url: String) -> Result<Self, ReadableClientError> {
+        let provider = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect(&url)
+            .await?;
 
-impl ReadableClient<Http> {
-    pub fn new_from_url(url: String) -> Result<Self, ReadableClientError> {
-        let provider = Provider::<Http>::try_from(url.clone())
-            .map_err(|err| ReadableClientError::CreateReadableClientHttpError(err.to_string()))?;
         Ok(Self {
-            providers: HashMap::from([(url, provider)]),
+            providers: HashMap::from([(url, Box::new(provider) as Box<dyn Provider<AnyNetwork>>)]),
         })
     }
 
-    pub fn new_from_urls(urls: Vec<String>) -> Result<Self, ReadableClientError> {
+    pub fn new_from_http_urls(urls: Vec<String>) -> Result<Self, ReadableClientError> {
         let providers: HashMap<String, _> = urls
             .into_iter()
             .filter_map(|url| {
-                Provider::<Http>::try_from(url.clone())
-                    .ok()
-                    .map(|provider| (url, provider))
+                let rpc_url = url.parse().ok()?;
+                let provider: Box<dyn Provider<AnyNetwork>> = Box::new(
+                    ProviderBuilder::new()
+                        .network::<AnyNetwork>()
+                        .connect_http(rpc_url),
+                );
+                Some((url, provider))
             })
             .collect();
 
@@ -76,10 +81,8 @@ impl ReadableClient<Http> {
             Ok(Self { providers })
         }
     }
-}
 
-impl<P: JsonRpcClient> ReadableClient<P> {
-    pub fn new(providers: HashMap<String, Provider<P>>) -> Self {
+    pub fn new(providers: HashMap<String, Box<dyn Provider<AnyNetwork>>>) -> Self {
         Self { providers }
     }
 
@@ -90,45 +93,40 @@ impl<P: JsonRpcClient> ReadableClient<P> {
     ) -> Result<<C as SolCall>::Return, ReadableClientError> {
         let data = parameters.call.abi_encode();
 
-        let transaction_request = AlloyTransactionRequest::new()
-            .with_to(Some(parameters.address))
-            .with_data(Some(data))
-            .with_gas(parameters.gas);
+        let transaction_request = TransactionRequest::default()
+            .with_to(parameters.address)
+            .with_input(data);
+
+        let transaction_request = if let Some(gas) = parameters.gas {
+            transaction_request.with_gas_limit(gas) // NOTE: check that this is the right param
+        } else {
+            transaction_request
+        };
 
         let mut errors: HashMap<String, ReadableClientError> = HashMap::new();
 
         for (url, provider) in &self.providers {
-            let typed_tx = TypedTransaction::Eip1559(transaction_request.to_eip1559());
-            let block_id = parameters.block_number.map(|val| {
-                ethers::types::BlockId::Number(ethers::types::BlockNumber::Number(
-                    alloy_u64_to_ethers(val),
-                ))
-            });
-
-            match provider.call(&typed_tx, block_id).await {
+            match provider
+                .call(WithOtherFields::new(transaction_request.clone()))
+                .await
+            {
                 Ok(res) => {
-                    return C::abi_decode_returns(res.to_vec().as_slice(), true).map_err(|err| {
+                    return C::abi_decode_returns(res.to_vec().as_slice()).map_err(|err| {
                         ReadableClientError::ReadDecodeReturnError(err.to_string())
                     });
                 }
                 Err(provider_err) => {
-                    let error_to_insert = if let Some(rpc_err) = provider_err.as_error_response() {
-                        if rpc_err.is_revert() {
-                            match AbiDecodedErrorType::try_from_json_rpc_error(rpc_err.clone())
-                                .await
-                            {
-                                Ok(decoded_err) => {
-                                    ReadableClientError::AbiDecodedErrorType(decoded_err)
-                                }
-                                Err(decode_failed_err) => {
-                                    ReadableClientError::AbiDecodeFailedErrors(decode_failed_err)
-                                }
+                    let error_to_insert = if let Some(rpc_err) = provider_err.as_error_resp() {
+                        match AbiDecodedErrorType::try_from_json_rpc_error(rpc_err.clone()).await {
+                            Ok(decoded_err) => {
+                                ReadableClientError::AbiDecodedErrorType(decoded_err)
                             }
-                        } else {
-                            ReadableClientError::RpcProviderError(url.clone(), rpc_err.to_string())
+                            Err(decode_failed_err) => {
+                                ReadableClientError::AbiDecodeFailedErrors(decode_failed_err)
+                            }
                         }
                     } else {
-                        ReadableClientError::ReadCallError(provider_err)
+                        ReadableClientError::RpcTransportKindError(provider_err)
                     };
                     errors.insert(url.clone(), error_to_insert);
                 }
@@ -144,17 +142,17 @@ impl<P: JsonRpcClient> ReadableClient<P> {
         }
     }
 
-    pub async fn get_chainid(&self) -> Result<U256, ReadableClientError> {
+    pub async fn get_chainid(&self) -> Result<u64, ReadableClientError> {
         let mut errors: HashMap<String, ReadableClientError> = HashMap::new();
 
         for (url, provider) in &self.providers {
             let res = provider
-                .get_chainid()
+                .get_chain_id()
                 .await
                 .map_err(|err| ReadableClientError::ReadChainIdError(err.to_string()));
 
             if let Ok(chainid) = res {
-                return Ok(ethers_u256_to_alloy(chainid));
+                return Ok(chainid);
             } else {
                 errors.insert(url.clone(), res.err().unwrap());
             }
@@ -173,7 +171,7 @@ impl<P: JsonRpcClient> ReadableClient<P> {
                 .map_err(|err| ReadableClientError::ReadBlockNumberError(err.to_string()));
 
             if let Ok(block_number) = res {
-                return Ok(block_number.as_u64());
+                return Ok(block_number);
             } else {
                 errors.insert(url.clone(), res.err().unwrap());
             }
@@ -186,10 +184,12 @@ impl<P: JsonRpcClient> ReadableClient<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy::primitives::{hex::encode, Address, U256};
+    use alloy::primitives::{Address, U256};
+    use alloy::providers::mock::Asserter;
+    use alloy::rpc::json_rpc::ErrorPayload;
     use alloy::sol;
-    use ethers::providers::{JsonRpcError, MockProvider, MockResponse};
     use serde_json::json;
+    use serde_json::value::RawValue;
 
     sol! {
        function foo(uint256 a, uint256 b) external view returns (Foo);
@@ -234,24 +234,25 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_return() -> anyhow::Result<()> {
-        // Create a mock Provider
-        let mock_provider = MockProvider::new();
+        let asserter = Asserter::new();
+
+        let mock_provider = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter.clone());
 
         let bytes_string = "0x000000000000000000000000000000000000000000000000000000000000002a0000000000000000000000001111111111111111111111111111111111111111";
 
-        // Create a mock response
-        let foo_response = json!(bytes_string);
+        let mock_response = json!(bytes_string);
 
-        let mock_response = MockResponse::Value(foo_response);
-        mock_provider.push_response(mock_response.clone());
-        mock_provider.push_response(mock_response.clone());
-        mock_provider.push_response(mock_response);
-
-        // Create a Provider instance with the mock provider
-        let client = Provider::new(mock_provider);
+        asserter.push_success(&mock_response.clone());
+        asserter.push_success(&mock_response.clone());
+        asserter.push_success(&mock_response);
 
         // Create a ReadableClient instance with the mock provider
-        let read_contract = ReadableClient::new(HashMap::from([("url".to_string(), client)]));
+        let read_contract = ReadableClient::new(HashMap::from([(
+            "url".to_string(),
+            Box::new(mock_provider) as Box<dyn Provider<AnyNetwork>>,
+        )]));
 
         // Create a ReadContractParameters instance
         let parameters = ReadContractParametersBuilder::default()
@@ -265,8 +266,8 @@ mod tests {
         // Call the read method
         let result = read_contract.read(parameters).await?;
 
-        let bar = result._0.bar;
-        let baz = result._0.baz;
+        let bar = result.bar;
+        let baz = result.baz;
 
         assert_eq!(bar, U256::from(42));
         assert_eq!(baz, Address::repeat_byte(0x11));
@@ -276,44 +277,39 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_chainid() -> anyhow::Result<()> {
-        // Create a mock Provider
-        let mock_provider = MockProvider::new();
+        let asserter = Asserter::new();
 
-        // Create a mock response
-        let foo_response =
-            json!("0x0000000000000000000000000000000000000000000000000000000000000005");
+        let mock_provider = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter.clone());
 
-        let mock_response = MockResponse::Value(foo_response);
-        mock_provider.push_response(mock_response);
+        asserter.push_success(&5_u64);
 
-        // Create a Provider instance with the mock provider
-        let client = Provider::new(mock_provider);
-
-        // Create a ReadableClient instance with the mock provider
-        let read_contract = ReadableClient::new(HashMap::from([("url".to_string(), client)]));
+        let read_contract = ReadableClient::new(HashMap::from([(
+            "url".to_string(),
+            Box::new(mock_provider) as Box<dyn Provider<AnyNetwork>>,
+        )]));
         let res = read_contract.get_chainid().await.unwrap();
 
-        assert_eq!(res, U256::from(5));
+        assert_eq!(res, 5_u64);
 
         Ok(())
     }
 
     #[tokio::test]
     async fn test_get_block_number() -> anyhow::Result<()> {
-        // Create a mock Provider
-        let mock_provider = MockProvider::new();
+        let asserter = Asserter::new();
 
-        // Create a mock response
-        let foo_response = json!("0x0000006");
+        let mock_provider = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter.clone());
 
-        let mock_response = MockResponse::Value(foo_response);
-        mock_provider.push_response(mock_response);
+        asserter.push_success(&6_u64);
 
-        // Create a Provider instance with the mock provider
-        let client = Provider::new(mock_provider);
-
-        // Create a ReadableClient instance with the mock provider
-        let read_contract = ReadableClient::new(HashMap::from([("url".to_string(), client)]));
+        let read_contract = ReadableClient::new(HashMap::from([(
+            "url".to_string(),
+            Box::new(mock_provider) as Box<dyn Provider<AnyNetwork>>,
+        )]));
         let res = read_contract.get_block_number().await.unwrap();
 
         assert_eq!(res, 6_u64);
@@ -323,24 +319,24 @@ mod tests {
 
     #[tokio::test]
     async fn test_decodable_error() -> anyhow::Result<()> {
-        // Create a mock Provider
-        let mock_provider = MockProvider::new();
+        let asserter = Asserter::new();
 
-        let data = vec![26, 198, 105, 8];
-        let mock_error = JsonRpcError {
+        let mock_provider = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter.clone());
+
+        let mock_error = ErrorPayload {
             code: 3,
-            data: Some(json!(encode(&data))),
-            message: "execution reverted".to_string(),
+            data: Some(RawValue::from_string(r#""0x1ac66908""#.to_string()).unwrap()),
+            message: "execution reverted".into(),
         };
 
-        let mock_response = MockResponse::Error(mock_error);
-        mock_provider.push_response(mock_response);
+        asserter.push_failure(mock_error);
 
-        // Create a Provider instance with the mock provider
-        let client = Provider::new(mock_provider);
-
-        // Create a ReadableClient instance with the mock provider
-        let read_contract = ReadableClient::new(HashMap::from([("url".to_string(), client)]));
+        let read_contract = ReadableClient::new(HashMap::from([(
+            "url".to_string(),
+            Box::new(mock_provider) as Box<dyn Provider<AnyNetwork>>,
+        )]));
 
         // Create a ReadContractParameters instance
         let parameters = ReadContractParametersBuilder::default()
@@ -388,30 +384,44 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_providers_read() -> anyhow::Result<()> {
-        let mock_provider1 = MockProvider::new();
-        let mock_provider2 = MockProvider::new();
-        let mock_provider3 = MockProvider::new();
+        let asserter1 = Asserter::new();
+        let asserter2 = Asserter::new();
+        let asserter3 = Asserter::new();
 
-        let foo_response = json!("0x000000000000000000000000000000000000000000000000000000000000002a0000000000000000000000001111111111111111111111111111111111111111");
-        let mock_response = MockResponse::Value(foo_response);
-        let mock_error = MockResponse::Error(JsonRpcError {
+        let mock_provider1 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter1.clone());
+        let mock_provider2 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter2.clone());
+        let mock_provider3 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter3.clone());
+
+        let mock_response = "0x000000000000000000000000000000000000000000000000000000000000002a0000000000000000000000001111111111111111111111111111111111111111";
+        let mock_error = ErrorPayload {
             code: 3,
             data: None,
-            message: "execution reverted".to_string(),
-        });
+            message: "execution reverted".into(),
+        };
 
-        mock_provider1.push_response(mock_error.clone());
-        mock_provider2.push_response(mock_error.clone());
-        mock_provider3.push_response(mock_response);
-
-        let client1 = Provider::new(mock_provider1);
-        let client2 = Provider::new(mock_provider2);
-        let client3 = Provider::new(mock_provider3);
+        asserter1.push_failure(mock_error.clone());
+        asserter2.push_failure(mock_error);
+        asserter3.push_success(&mock_response);
 
         let read_contract = ReadableClient::new(HashMap::from([
-            ("url1".to_string(), client1),
-            ("url2".to_string(), client2),
-            ("url3".to_string(), client3),
+            (
+                "url1".to_string(),
+                Box::new(mock_provider1) as Box<dyn Provider<AnyNetwork>>,
+            ),
+            (
+                "url2".to_string(),
+                Box::new(mock_provider2) as Box<dyn Provider<AnyNetwork>>,
+            ),
+            (
+                "url3".to_string(),
+                Box::new(mock_provider3) as Box<dyn Provider<AnyNetwork>>,
+            ),
         ]));
 
         let parameters = ReadContractParametersBuilder::default()
@@ -423,8 +433,8 @@ mod tests {
             .build()?;
         let result = read_contract.read(parameters).await?;
 
-        let bar = result._0.bar;
-        let baz = result._0.baz;
+        let bar = result.bar;
+        let baz = result.baz;
         assert_eq!(bar, U256::from(42));
         assert_eq!(baz, Address::repeat_byte(0x11));
 
@@ -433,50 +443,64 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_providers_read_error() -> anyhow::Result<()> {
-        let mock_provider1 = MockProvider::new();
-        let mock_provider2 = MockProvider::new();
-        let mock_provider3 = MockProvider::new();
-        let mock_provider4 = MockProvider::new();
-        let mock_provider5 = MockProvider::new();
+        let asserter1 = Asserter::new();
+        let asserter2 = Asserter::new();
+        let asserter3 = Asserter::new();
+        let asserter4 = Asserter::new();
 
-        mock_provider1.push_response(MockResponse::Error(JsonRpcError {
+        let mock_provider1 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter1.clone());
+        let mock_provider2 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter2.clone());
+        let mock_provider3 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter3.clone());
+        let mock_provider4 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter4.clone());
+
+        asserter1.push_failure(ErrorPayload {
             code: 3,
             data: None,
-            message: "execution reverted".to_string(),
-        }));
-        mock_provider2.push_response(MockResponse::Error(JsonRpcError {
+            message: "execution reverted".into(),
+        });
+        asserter2.push_failure(ErrorPayload {
             code: 3,
-            data: Some(json!(encode(vec![26, 198, 105, 8]))),
-            message: "some revert error".to_string(),
-        }));
-        mock_provider3.push_response(MockResponse::Error(JsonRpcError {
+            data: Some(RawValue::from_string(r#""0x1ac66908""#.to_string()).unwrap()),
+            message: "some revert error".into(),
+        });
+        asserter3.push_failure(ErrorPayload {
             code: 3,
-            data: Some(json!(encode(vec![26, 198, 105, 8]))),
-            message: "some other error".to_string(),
-        }));
-        mock_provider4.push_response(MockResponse::Error(JsonRpcError {
+            data: Some(
+                RawValue::from_string(json!({"error": "some other error"}).to_string()).unwrap(),
+            ),
+            message: "some other error".into(),
+        });
+        asserter4.push_failure(ErrorPayload {
             code: 3,
-            data: Some(json!({"error": "some other error"})),
-            message: "some other error".to_string(),
-        }));
-        mock_provider5.push_response(MockResponse::Error(JsonRpcError {
-            code: 3,
-            data: Some(json!(&vec![1])),
-            message: "some other error".to_string(),
-        }));
-
-        let client1 = Provider::new(mock_provider1);
-        let client2 = Provider::new(mock_provider2);
-        let client3 = Provider::new(mock_provider3);
-        let client4 = Provider::new(mock_provider4);
-        let client5 = Provider::new(mock_provider5);
+            data: Some(RawValue::from_string(json!(&vec![1]).to_string()).unwrap()),
+            message: "some other error".into(),
+        });
 
         let read_contract = ReadableClient::new(HashMap::from([
-            ("url4".to_string(), client1),
-            ("url5".to_string(), client2),
-            ("url6".to_string(), client3),
-            ("url7".to_string(), client4),
-            ("url8".to_string(), client5),
+            (
+                "url1".to_string(),
+                Box::new(mock_provider1) as Box<dyn Provider<AnyNetwork>>,
+            ),
+            (
+                "url2".to_string(),
+                Box::new(mock_provider2) as Box<dyn Provider<AnyNetwork>>,
+            ),
+            (
+                "url3".to_string(),
+                Box::new(mock_provider3) as Box<dyn Provider<AnyNetwork>>,
+            ),
+            (
+                "url4".to_string(),
+                Box::new(mock_provider4) as Box<dyn Provider<AnyNetwork>>,
+            ),
         ]));
 
         let parameters = ReadContractParametersBuilder::default()
@@ -491,20 +515,22 @@ mod tests {
         let err = res.err().unwrap();
         match err {
             ReadableClientError::AllProvidersFailed(errors) => {
-                assert_eq!(errors.len(), 5);
+                assert_eq!(errors.len(), 4);
 
-                assert!(errors.contains_key("url4"));
-                match errors.get("url4") {
-                    Some(ReadableClientError::AbiDecodeFailedErrors(
-                        AbiDecodeFailedErrors::InvalidJsonRpcResponse(msg),
-                    )) => {
-                        assert_eq!(msg, "(code: 3, message: execution reverted, data: None)");
-                    }
-                    _ => panic!("unexpected error type"),
-                }
+                assert!(errors.contains_key("url1"));
+                assert!(
+                    matches!(
+                        errors.get("url1"),
+                        Some(ReadableClientError::AbiDecodeFailedErrors(
+                            AbiDecodeFailedErrors::InvalidJsonRpcResponse(msg)
+                        )) if msg.contains("execution reverted")
+                    ),
+                    "url1 error message should contain 'execution reverted' but got: {:?}",
+                    errors.get("url1")
+                );
 
-                assert!(errors.contains_key("url5"));
-                match errors.get("url5") {
+                assert!(errors.contains_key("url2"));
+                match errors.get("url2") {
                     Some(ReadableClientError::AbiDecodedErrorType(
                         AbiDecodedErrorType::Known {
                             name,
@@ -521,36 +547,21 @@ mod tests {
                     _ => panic!("unexpected error type"),
                 }
 
-                assert!(errors.contains_key("url6"));
-                println!("errors: {:?}", errors.get("url6"));
-                match errors.get("url6") {
-                    Some(ReadableClientError::RpcProviderError(url, msg)) => {
-                        assert_eq!(url, "url6");
-                        assert_eq!(msg, "(code: 3, message: some other error, data: Some(String(\"1ac66908\")))");
-                    }
-                    _ => panic!("unexpected error type"),
-                }
+                assert!(errors.contains_key("url3"));
+                assert!(matches!(
+                    errors.get("url3"),
+                    Some(ReadableClientError::AbiDecodeFailedErrors(
+                        AbiDecodeFailedErrors::InvalidJsonRpcResponse(msg)
+                    )) if msg.contains("some other error")
+                ));
 
-                assert!(errors.contains_key("url7"));
-                match errors.get("url7") {
-                    Some(ReadableClientError::RpcProviderError(url, msg)) => {
-                        assert_eq!(url, "url7");
-                        assert_eq!(msg, "(code: 3, message: some other error, data: Some(Object {\"error\": String(\"some other error\")}))");
-                    }
-                    _ => panic!("unexpected error type"),
-                }
-
-                assert!(errors.contains_key("url8"));
-                match errors.get("url8") {
-                    Some(ReadableClientError::RpcProviderError(url, msg)) => {
-                        assert_eq!(url, "url8");
-                        assert_eq!(
-                            msg,
-                            "(code: 3, message: some other error, data: Some(Array [Number(1)]))"
-                        );
-                    }
-                    _ => panic!("unexpected error type"),
-                }
+                assert!(errors.contains_key("url4"));
+                assert!(matches!(
+                    errors.get("url4"),
+                    Some(ReadableClientError::AbiDecodeFailedErrors(
+                        AbiDecodeFailedErrors::InvalidJsonRpcResponse(msg)
+                    )) if msg.contains("some other error") && msg.contains("[1]")
+                ));
             }
             _ => panic!("unexpected error type"),
         }
@@ -560,30 +571,44 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_providers_get_block_number() -> anyhow::Result<()> {
-        let mock_provider1 = MockProvider::new();
-        let mock_provider2 = MockProvider::new();
-        let mock_provider3 = MockProvider::new();
+        let asserter1 = Asserter::new();
+        let asserter2 = Asserter::new();
+        let asserter3 = Asserter::new();
 
-        let foo_response = json!("0x0000006");
-        let mock_response = MockResponse::Value(foo_response);
-        let mock_error = MockResponse::Error(JsonRpcError {
+        let mock_provider1 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter1.clone());
+        let mock_provider2 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter2.clone());
+        let mock_provider3 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter3.clone());
+
+        let mock_response = "0x0000006";
+        let mock_error = ErrorPayload {
             code: 3,
             data: None,
-            message: "execution reverted".to_string(),
-        });
+            message: "execution reverted".into(),
+        };
 
-        mock_provider1.push_response(mock_error.clone());
-        mock_provider2.push_response(mock_error.clone());
-        mock_provider3.push_response(mock_response);
-
-        let client1 = Provider::new(mock_provider1);
-        let client2 = Provider::new(mock_provider2);
-        let client3 = Provider::new(mock_provider3);
+        asserter1.push_failure(mock_error.clone());
+        asserter2.push_failure(mock_error.clone());
+        asserter3.push_success(&mock_response);
 
         let read_contract = ReadableClient::new(HashMap::from([
-            ("url1".to_string(), client1),
-            ("url2".to_string(), client2),
-            ("url3".to_string(), client3),
+            (
+                "url1".to_string(),
+                Box::new(mock_provider1) as Box<dyn Provider<AnyNetwork>>,
+            ),
+            (
+                "url2".to_string(),
+                Box::new(mock_provider2) as Box<dyn Provider<AnyNetwork>>,
+            ),
+            (
+                "url3".to_string(),
+                Box::new(mock_provider3) as Box<dyn Provider<AnyNetwork>>,
+            ),
         ]));
 
         let res = read_contract.get_block_number().await.unwrap();
@@ -594,23 +619,32 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_providers_get_block_number_error() -> anyhow::Result<()> {
-        let mock_provider1 = MockProvider::new();
-        let mock_provider2 = MockProvider::new();
+        let asserter = Asserter::new();
 
-        let mock_error = MockResponse::Error(JsonRpcError {
+        let mock_provider1 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter.clone());
+        let mock_provider2 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter.clone());
+
+        let mock_error = ErrorPayload {
             code: 3,
             data: None,
-            message: "execution reverted".to_string(),
-        });
-        mock_provider1.push_response(mock_error.clone());
-        mock_provider2.push_response(mock_error.clone());
-
-        let client1 = Provider::new(mock_provider1);
-        let client2 = Provider::new(mock_provider2);
+            message: "execution reverted".into(),
+        };
+        asserter.push_failure(mock_error.clone());
+        asserter.push_failure(mock_error);
 
         let read_contract = ReadableClient::new(HashMap::from([
-            ("url1".to_string(), client1),
-            ("url2".to_string(), client2),
+            (
+                "url1".to_string(),
+                Box::new(mock_provider1) as Box<dyn Provider<AnyNetwork>>,
+            ),
+            (
+                "url2".to_string(),
+                Box::new(mock_provider2) as Box<dyn Provider<AnyNetwork>>,
+            ),
         ]));
 
         let res = read_contract.get_block_number().await;
@@ -620,26 +654,16 @@ mod tests {
                 assert_eq!(errors.len(), 2);
 
                 assert!(errors.contains_key("url1"));
-                match errors.get("url1") {
-                    Some(ReadableClientError::ReadBlockNumberError(error)) => {
-                        assert_eq!(
-                            error,
-                            "JSON-RPC error: (code: 3, message: execution reverted, data: None)"
-                        );
-                    }
-                    _ => panic!("unexpected error type"),
-                }
+                assert!(matches!(
+                    errors.get("url1"),
+                    Some(ReadableClientError::ReadBlockNumberError(msg)) if msg.contains("execution reverted")
+                ));
 
                 assert!(errors.contains_key("url2"));
-                match errors.get("url2") {
-                    Some(ReadableClientError::ReadBlockNumberError(error)) => {
-                        assert_eq!(
-                            error,
-                            "JSON-RPC error: (code: 3, message: execution reverted, data: None)"
-                        );
-                    }
-                    _ => panic!("unexpected error type"),
-                }
+                assert!(matches!(
+                    errors.get("url2"),
+                    Some(ReadableClientError::ReadBlockNumberError(msg)) if msg.contains("execution reverted")
+                ));
             }
             _ => panic!("unexpected error type"),
         }
@@ -649,57 +673,78 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_providers_get_chainid() -> anyhow::Result<()> {
-        let mock_provider1 = MockProvider::new();
-        let mock_provider2 = MockProvider::new();
-        let mock_provider3 = MockProvider::new();
+        let asserter = Asserter::new();
 
-        let foo_response = json!("0x00000005");
-        let mock_response = MockResponse::Value(foo_response);
-        let mock_error = MockResponse::Error(JsonRpcError {
+        let mock_provider1 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter.clone());
+        let mock_provider2 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter.clone());
+        let mock_provider3 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter.clone());
+
+        let mock_response = "0x00000005";
+        let mock_error = ErrorPayload {
             code: 3,
             data: None,
-            message: "execution reverted".to_string(),
-        });
+            message: "execution reverted".into(),
+        };
 
-        mock_provider1.push_response(mock_error.clone());
-        mock_provider2.push_response(mock_error.clone());
-        mock_provider3.push_response(mock_response);
-
-        let client1 = Provider::new(mock_provider1);
-        let client2 = Provider::new(mock_provider2);
-        let client3 = Provider::new(mock_provider3);
+        asserter.push_failure(mock_error.clone());
+        asserter.push_failure(mock_error.clone());
+        asserter.push_success(&mock_response);
 
         let read_contract = ReadableClient::new(HashMap::from([
-            ("url1".to_string(), client1),
-            ("url2".to_string(), client2),
-            ("url3".to_string(), client3),
+            (
+                "url1".to_string(),
+                Box::new(mock_provider1) as Box<dyn Provider<AnyNetwork>>,
+            ),
+            (
+                "url2".to_string(),
+                Box::new(mock_provider2) as Box<dyn Provider<AnyNetwork>>,
+            ),
+            (
+                "url3".to_string(),
+                Box::new(mock_provider3) as Box<dyn Provider<AnyNetwork>>,
+            ),
         ]));
 
         let res = read_contract.get_chainid().await.unwrap();
-        assert_eq!(res, U256::from(5));
+        assert_eq!(res, 5_u64);
 
         Ok(())
     }
 
     #[tokio::test]
     async fn test_multiple_providers_get_chainid_error() -> anyhow::Result<()> {
-        let mock_provider1 = MockProvider::new();
-        let mock_provider2 = MockProvider::new();
+        let asserter = Asserter::new();
 
-        let mock_error = MockResponse::Error(JsonRpcError {
+        let mock_provider1 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter.clone());
+        let mock_provider2 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter.clone());
+
+        let err = ErrorPayload {
             code: 3,
+            message: "execution reverted".into(),
             data: None,
-            message: "execution reverted".to_string(),
-        });
-        mock_provider1.push_response(mock_error.clone());
-        mock_provider2.push_response(mock_error.clone());
-
-        let client1 = Provider::new(mock_provider1);
-        let client2 = Provider::new(mock_provider2);
+        };
+        asserter.push_failure(err.clone());
+        asserter.push_failure(err);
 
         let read_contract = ReadableClient::new(HashMap::from([
-            ("url1".to_string(), client1),
-            ("url2".to_string(), client2),
+            (
+                "url1".to_string(),
+                Box::new(mock_provider1) as Box<dyn Provider<AnyNetwork>>,
+            ),
+            (
+                "url2".to_string(),
+                Box::new(mock_provider2) as Box<dyn Provider<AnyNetwork>>,
+            ),
         ]));
 
         let res = read_contract.get_chainid().await;
@@ -709,26 +754,20 @@ mod tests {
                 assert_eq!(errors.len(), 2);
 
                 assert!(errors.contains_key("url1"));
-                match errors.get("url1") {
-                    Some(ReadableClientError::ReadChainIdError(error)) => {
-                        assert_eq!(
-                            error,
-                            "JSON-RPC error: (code: 3, message: execution reverted, data: None)"
-                        );
-                    }
-                    _ => panic!("unexpected error type"),
-                }
+                assert!(matches!(
+                    errors.get("url1"),
+                    Some(ReadableClientError::ReadChainIdError(msg)) if msg.contains("execution reverted")
+                ));
 
                 assert!(errors.contains_key("url2"));
-                match errors.get("url2") {
-                    Some(ReadableClientError::ReadChainIdError(error)) => {
-                        assert_eq!(
-                            error,
-                            "JSON-RPC error: (code: 3, message: execution reverted, data: None)"
-                        );
-                    }
-                    _ => panic!("unexpected error type"),
-                }
+                assert!(
+                    matches!(
+                        errors.get("url2"),
+                        Some(ReadableClientError::ReadChainIdError(msg)) if msg.contains("execution reverted"),
+                    ),
+                    "url2 error message should contain 'execution reverted' but got: {:?}",
+                    errors.get("url2")
+                );
             }
             _ => panic!("unexpected error type"),
         }

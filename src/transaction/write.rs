@@ -1,16 +1,15 @@
-use crate::request_shim::{AlloyTransactionRequest, TransactionRequestShim};
+use alloy::hex;
+use alloy::network::{AnyNetwork, AnyReceiptEnvelope, TransactionBuilder};
 use alloy::primitives::hex::{decode, FromHexError};
 use alloy::primitives::{Address, U256};
+use alloy::providers::{
+    PendingTransactionBuilder, PendingTransactionError, Provider, WalletProvider,
+};
+use alloy::rpc::types::{TransactionReceipt, TransactionRequest};
+use alloy::serde::WithOtherFields;
 use alloy::sol_types::SolCall;
+use alloy::transports::RpcError;
 use derive_builder::Builder;
-use ethers::middleware::signer::SignerMiddlewareError;
-use ethers::middleware::MiddlewareError;
-use ethers::middleware::SignerMiddleware;
-use ethers::providers::{Middleware, PendingTransaction, ProviderError};
-use ethers::signers::Signer;
-use ethers::types::transaction::eip2718::TypedTransaction;
-use ethers::types::{Bytes, TransactionReceipt};
-use ethers::utils::hex;
 use rain_error_decoding::{AbiDecodeFailedErrors, AbiDecodedErrorType};
 use thiserror::Error;
 use tracing::info;
@@ -24,7 +23,7 @@ pub enum WritableClientError {
     #[error("failed to send transaction: {0}")]
     WriteSendTxError(String),
     #[error(transparent)]
-    WriteConfirmationError(ProviderError),
+    WriteConfirmationError(PendingTransactionError),
     #[error("transaction failed")]
     WriteFailedTxError(),
     #[error(transparent)]
@@ -42,24 +41,49 @@ pub struct WriteContractParameters<C: SolCall> {
     pub call: C,
     pub address: Address,
     #[builder(setter(into), default)]
-    pub gas: Option<U256>,
+    pub gas: Option<u64>,
     #[builder(setter(into), default)]
     pub gas_price: Option<U256>,
     #[builder(setter(into), default)]
-    pub max_fee_per_gas: Option<U256>,
+    pub max_fee_per_gas: Option<u128>,
     #[builder(setter(into), default)]
-    pub max_priority_fee_per_gas: Option<U256>,
+    pub max_priority_fee_per_gas: Option<u128>,
     #[builder(setter(into), default)]
-    pub nonce: Option<U256>,
+    pub nonce: Option<u64>,
     #[builder(setter(into), default)]
     pub value: Option<U256>,
 }
-#[derive(Clone)]
-pub struct WritableClient<M: Middleware, S: Signer>(SignerMiddleware<M, S>);
 
-impl<M: Middleware, S: Signer> WritableClient<M, S> {
-    // Create a new WriteContract instance, passing a client
-    pub fn new(client: SignerMiddleware<M, S>) -> Self {
+impl<C: SolCall> WriteContractParameters<C> {
+    pub fn build_transaction_request(&self) -> TransactionRequest {
+        let mut tx_request = TransactionRequest::default()
+            .with_to(self.address)
+            .with_input(self.call.abi_encode());
+
+        if let Some(gas) = self.gas {
+            tx_request = tx_request.with_gas_limit(gas);
+        }
+        if let Some(max_fee_per_gas) = self.max_fee_per_gas {
+            tx_request = tx_request.with_max_fee_per_gas(max_fee_per_gas);
+        }
+        if let Some(max_priority_fee_per_gas) = self.max_priority_fee_per_gas {
+            tx_request = tx_request.with_max_priority_fee_per_gas(max_priority_fee_per_gas);
+        }
+        if let Some(nonce) = self.nonce {
+            tx_request = tx_request.with_nonce(nonce);
+        }
+        if let Some(value) = self.value {
+            tx_request = tx_request.with_value(value);
+        }
+        tx_request
+    }
+}
+
+#[derive(Clone)]
+pub struct WritableClient<P: Provider<AnyNetwork> + WalletProvider<AnyNetwork> + Clone>(P);
+
+impl<P: Provider<AnyNetwork> + WalletProvider<AnyNetwork> + Clone> WritableClient<P> {
+    pub fn new(client: P) -> Self {
         Self(client)
     }
 
@@ -67,89 +91,64 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
     pub async fn write<C: SolCall>(
         &self,
         parameters: WriteContractParameters<C>,
-    ) -> Result<TransactionReceipt, WritableClientError> {
-        let pending_tx = self.write_pending(parameters).await?;
+    ) -> Result<TransactionReceipt<AnyReceiptEnvelope<alloy::rpc::types::Log>>, WritableClientError>
+    {
+        let pending_tx = self.write_pending(parameters, 4).await?;
 
         info!("Transaction submitted. Awaiting block confirmations...");
 
-        let res = pending_tx.confirmations(4).await;
+        let res = pending_tx.get_receipt().await;
 
-        let tx_confirmation = match res {
-            Ok(res) => res,
-            Err(provider_err) => {
-                let error_to_insert = if let Some(rpc_err) = provider_err.as_error_response() {
-                    if rpc_err.is_revert() {
-                        match AbiDecodedErrorType::try_from_json_rpc_error(rpc_err.clone()).await {
-                            Ok(decoded_err) => {
-                                WritableClientError::AbiDecodedErrorType(decoded_err)
-                            }
-                            Err(decode_failed_err) => {
-                                WritableClientError::AbiDecodeFailedErrors(decode_failed_err)
-                            }
+        let receipt = match res {
+            Ok(receipt) => receipt,
+            Err(PendingTransactionError::TransportError(RpcError::ErrorResp(err_payload))) => {
+                return Err(
+                    match AbiDecodedErrorType::try_from_json_rpc_error(err_payload).await {
+                        Ok(decoded_err) => WritableClientError::AbiDecodedErrorType(decoded_err),
+                        Err(decode_failed_err) => {
+                            WritableClientError::AbiDecodeFailedErrors(decode_failed_err)
                         }
-                    } else {
-                        WritableClientError::RpcError(rpc_err.to_string())
-                    }
-                } else {
-                    WritableClientError::WriteConfirmationError(provider_err)
-                };
-                return Err(error_to_insert);
+                    },
+                );
+            }
+            Err(provider_err) => {
+                return Err(WritableClientError::WriteConfirmationError(provider_err));
             }
         };
 
-        let tx_receipt = match tx_confirmation {
-            Some(receipt) => receipt,
-            None => return Err(WritableClientError::WriteFailedTxError()),
-        };
-
         info!("Transaction Confirmed");
-        info!(
-            "✅ Hash : 0x{}",
-            hex::encode(tx_receipt.transaction_hash.as_bytes())
-        );
-        Ok(tx_receipt)
+        info!("✅ Hash : 0x{}", hex::encode(receipt.transaction_hash));
+        Ok(receipt.inner)
     }
 
     // Executes a write function but returns a PendingTransaction instance
     pub async fn write_pending<C: SolCall>(
         &self,
         parameters: WriteContractParameters<C>,
-    ) -> Result<ethers::providers::PendingTransaction<'_, M::Provider>, WritableClientError> {
-        let transaction_request = AlloyTransactionRequest::new()
-            .with_to(Some(parameters.address))
-            .with_data(Some(parameters.call.abi_encode()))
-            .with_gas(parameters.gas)
-            .with_max_fee_per_gas(parameters.max_fee_per_gas)
-            .with_max_priority_fee_per_gas(parameters.max_priority_fee_per_gas)
-            .with_nonce(parameters.nonce)
-            .with_value(parameters.value);
-
-        let ethers_transaction_request = transaction_request.to_eip1559();
+        confirmations: u64,
+    ) -> Result<PendingTransactionBuilder<AnyNetwork>, WritableClientError> {
+        let transaction_request = parameters.build_transaction_request();
 
         let res = self
             .0
-            .send_transaction(ethers_transaction_request, None)
+            .send_transaction(WithOtherFields::new(transaction_request))
             .await;
 
         let pending_tx = if let Err(err) = res {
-            if let SignerMiddlewareError::MiddlewareError(err) = err {
-                if let Some(rpc_err) = err.as_error_response() {
-                    match rpc_err.data.clone() {
-                        Some(data) => {
-                            let data = data.as_str().unwrap();
-                            let data_slice = decode(data)?;
-                            let err = AbiDecodedErrorType::selector_registry_abi_decode(
-                                data_slice.as_slice(),
-                            )
-                            .await?;
-                            return Err(WritableClientError::WriteSendTxError(err.to_string()));
-                        }
-                        None => {
-                            return Err(WritableClientError::WriteSendTxError(err.to_string()));
-                        }
+            if let RpcError::ErrorResp(err) = err {
+                match err.data.clone() {
+                    Some(data) => {
+                        let data_slice = decode(data.get())?;
+                        let err = AbiDecodedErrorType::selector_registry_abi_decode(
+                            data_slice.as_slice(),
+                        )
+                        .await?;
+                        return Err(WritableClientError::WriteSendTxError(err.to_string()));
+                    }
+                    None => {
+                        return Err(WritableClientError::WriteSendTxError(err.to_string()));
                     }
                 }
-                return Err(WritableClientError::WriteSendTxError(err.to_string()));
             } else {
                 return Err(WritableClientError::WriteSendTxError(err.to_string()));
             }
@@ -157,49 +156,15 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
             res.map_err(|e| WritableClientError::WriteSendTxError(e.to_string()))?
         };
 
-        Ok(pending_tx)
-    }
-
-    pub async fn prepare_request<C: SolCall>(
-        &self,
-        parameters: WriteContractParameters<C>,
-    ) -> Result<TypedTransaction, WritableClientError> {
-        let transaction_request = AlloyTransactionRequest::new()
-            .with_to(Some(parameters.address))
-            .with_data(Some(parameters.call.abi_encode()))
-            .with_gas(parameters.gas)
-            .with_max_fee_per_gas(parameters.max_fee_per_gas)
-            .with_max_priority_fee_per_gas(parameters.max_priority_fee_per_gas)
-            .with_nonce(parameters.nonce)
-            .with_value(parameters.value);
-
-        let eip1559_request = transaction_request.to_eip1559();
-
-        let mut tx = TypedTransaction::Eip1559(eip1559_request);
-        self.0
-            .fill_transaction(&mut tx, None)
-            .await
-            .map_err(|e| WritableClientError::WriteFillTxError(e.to_string()))?;
-
-        Ok(tx)
-    }
-
-    pub async fn sign_request(&self, tx: TypedTransaction) -> Result<Bytes, WritableClientError> {
-        let signature = self
-            .0
-            .sign_transaction(&tx, self.0.signer().address())
-            .await
-            .map_err(|e| WritableClientError::WriteSignTxError(e.to_string()))?;
-
-        Ok(tx.rlp_signed(&signature))
+        Ok(pending_tx.with_required_confirmations(confirmations))
     }
 
     pub async fn send_request(
         &self,
-        bytes: Bytes,
-    ) -> Result<PendingTransaction<'_, M::Provider>, WritableClientError> {
+        tx: TransactionRequest,
+    ) -> Result<PendingTransactionBuilder<AnyNetwork>, WritableClientError> {
         self.0
-            .send_raw_transaction(bytes)
+            .send_transaction(WithOtherFields::new(tx))
             .await
             .map_err(|e| WritableClientError::WriteSendTxError(e.to_string()))
     }
@@ -208,13 +173,12 @@ impl<M: Middleware, S: Signer> WritableClient<M, S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::transaction::mock_middleware::{MockJsonRpcClient, MockMiddleware};
     use alloy::primitives::{Address, U256};
+    use alloy::providers::mock::Asserter;
+    use alloy::providers::ProviderBuilder;
+    use alloy::signers::local::LocalSigner;
     use alloy::sol;
-    use ethers::core::rand::thread_rng;
-    use ethers::providers::Provider;
-    use ethers::signers::LocalWallet;
-    use ethers::types::{Bytes, H160};
+    use serde_json::json;
     use tracing_subscriber;
     use tracing_subscriber::FmtSubscriber;
 
@@ -249,12 +213,12 @@ mod tests {
                 a: U256::from(42),
                 b: U256::from(10),
             })
-            .gas(Some(U256::from(100000)))
-            .gas_price(Some(U256::from(100000)))
-            .max_fee_per_gas(Some(U256::from(100000)))
-            .max_priority_fee_per_gas(U256::from(100000))
-            .nonce(Some(U256::from(100000)))
-            .value(Some(U256::from(100000)))
+            .gas(100000)
+            .gas_price(U256::from(100000))
+            .max_fee_per_gas(100000)
+            .max_priority_fee_per_gas(100000)
+            .nonce(100000)
+            .value(U256::from(100000))
             .build()?;
 
         assert_eq!(parameters.address, Address::repeat_byte(0x11));
@@ -265,15 +229,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_write() -> anyhow::Result<()> {
-        // Create a mock transport
-        let mock_transport = MockJsonRpcClient::new();
-        // Create a Provider instance
-        let provider = Provider::new(mock_transport);
-        // Create a mock middleware
-        let mut mock_middleware = MockMiddleware::new(provider)?;
-        // Create a mock wallet
-        let wallet = LocalWallet::new(&mut thread_rng());
+    async fn test_write() {
+        let asserter = Asserter::new();
+        let wallet = LocalSigner::random();
+
+        let provider = ProviderBuilder::new()
+            .wallet(wallet)
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter.clone());
 
         // Create a WriteContractParameters instance
         let parameters = WriteContractParametersBuilder::default()
@@ -282,22 +245,63 @@ mod tests {
                 b: U256::from(10),
             })
             .address(Address::repeat_byte(0x22))
-            .build()?;
+            .build()
+            .unwrap();
 
-        // Create a mock response
-        mock_middleware.assert_next_data(Bytes::from(parameters.call.abi_encode()));
-        mock_middleware.assert_next_to(H160::repeat_byte(0x22));
+        // eth_estimateGas response
+        asserter.push_success(&"0x5208");
 
-        // Finally create a client SignerMiddleware instance
-        let client = SignerMiddleware::new(mock_middleware, wallet);
+        // eth_feeHistory response
+        asserter.push_success(&json!({
+          "oldestBlock": "0x1554ec2",
+          "reward": [
+            [ "0x4b571c0", "0x2f23c46c" ],
+            [ "0x396c1b9", "0x4d579d50" ],
+            [ "0x77359400", "0x77359400" ],
+            [ "0x2faf080", "0x3b9aca00" ]
+          ],
+          "baseFeePerGas": [ "0x3af6c9f1", "0x3b19496d", "0x36647614", "0x302c838b", "0x359f85b3" ],
+          "gasUsedRatio": [ 0.5091416944444445, 0.18145872222222223, 0.04269041059401201, 0.9524652037856148 ],
+          "baseFeePerBlobGas": [ "0x320b8540d", "0x384cf5f4e", "0x3f5694c1f", "0x44831ac79", "0x3f5694c1f" ],
+          "blobGasUsedRatio": [ 1, 1, 0.8333333333333334, 0.16666666666666666 ]
+        }));
+
+        // eth_getTransactionCount response, nonce
+        asserter.push_success(&"0x123");
+
+        // eth_chainId response, chain id
+        asserter.push_success(&"0x1");
+
+        // eth_sendRawTransaction response, transaction hash
+        asserter
+            .push_success(&"0x0000000000000000000000000000000000000000000000000000000000000001");
+
+        // mock eth_getTransactionReceipt response, json transaction receipt
+        let mock_receipt = json!({
+            "blockHash": "0xa957d47df264a31badc3ae823e10ac1d444b098d9b73d204c40426e57f47e8c3",
+            "blockNumber": "0xeff35f",
+            "contractAddress": null,
+            "cumulativeGasUsed": "0xa12515",
+            "effectiveGasPrice": "0x5a9c688d4",
+            "from": "0x6221a03dae12247eb398fd867784cacfdcfff4e7",
+            "gasUsed": "0xb4c8",
+            "logs": [],
+            "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000080000000000000000200000000000000000000020000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020001000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000010200000000000000000000000000000000000000000000000000000020000",
+            "status": "0x1",
+            "to": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "transactionHash": "0x85d995eba9763907fdf35cd2034144dd9d53ce32cbec21349d4b12823c6860c5",
+            "transactionIndex": "0x66",
+            "type": "0x2"
+        });
+        asserter.push_success(&mock_receipt);
+        asserter.push_success(&mock_receipt);
+        asserter.push_success(&mock_receipt);
 
         // Create a WritableClient instance with the mock client
-        let writable_client = WritableClient::new(client);
+        let writable_client = WritableClient::new(provider);
 
         // Call the write method
-        let _ = writable_client.write(parameters).await?;
-
-        Ok(())
+        let _ = writable_client.write(parameters).await.unwrap();
     }
 
     #[allow(dead_code)]
