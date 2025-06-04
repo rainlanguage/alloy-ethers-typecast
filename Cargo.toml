@@ -9,7 +9,6 @@ homepage = "https://github.com/rainlanguage/alloy-ethers-typecast"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ethers = { version = "2.0.14", features = ["legacy", "ledger"] }
 alloy = { version = "1.0.9", features = ["json-rpc", "rand", "sol-types"] }
 once_cell = "1.17.1"
 reqwest = { version = "0.11.17", features = ["json"] }
