@@ -65,7 +65,7 @@ impl ReadableClient {
 
     pub fn new_from_http_urls(urls: Vec<String>) -> Result<Self, ReadableClientError> {
         let providers: HashMap<String, _> = urls
-            .into_iter()
+            .iter()
             .filter_map(|url| {
                 let rpc_url: Url = url.parse().ok()?;
                 if !rpc_url.scheme().starts_with("http") {
@@ -77,14 +77,14 @@ impl ReadableClient {
                         .network::<AnyNetwork>()
                         .connect_http(rpc_url),
                 );
-                Some((url, provider))
+                Some((url.to_owned(), provider))
             })
             .collect();
 
         if providers.is_empty() {
-            Err(ReadableClientError::CreateReadableClientHttpError(
-                "No valid providers could be created from the given URLs.".to_string(),
-            ))
+            Err(ReadableClientError::CreateReadableClientHttpError(format!(
+                "No valid providers could be created from the given URLs: {urls:?}"
+            )))
         } else {
             Ok(Self { providers })
         }
@@ -102,8 +102,16 @@ impl ReadableClient {
         }
     }
 
-    pub fn new(providers: HashMap<String, Box<dyn Provider<AnyNetwork>>>) -> Self {
-        Self { providers }
+    pub fn new(
+        providers: HashMap<String, Box<dyn Provider<AnyNetwork>>>,
+    ) -> Result<Self, ReadableClientError> {
+        if providers.is_empty() {
+            Err(ReadableClientError::CreateReadableClientHttpError(
+                "cannot initiate a read client with no providers given".to_string(),
+            ))
+        } else {
+            Ok(Self { providers })
+        }
     }
 
     // Executes a read function on a contract.
@@ -153,13 +161,7 @@ impl ReadableClient {
             }
         }
 
-        if errors.is_empty() {
-            Err(ReadableClientError::CreateReadableClientHttpError(
-                "No providers were available to handle the request.".to_string(),
-            ))
-        } else {
-            Err(ReadableClientError::AllProvidersFailed(errors))
-        }
+        Err(ReadableClientError::AllProvidersFailed(errors))
     }
 
     pub async fn get_chainid(&self) -> Result<u64, ReadableClientError> {
@@ -405,7 +407,8 @@ mod tests {
                 "url3".to_string(),
                 Box::new(mock_provider3) as Box<dyn Provider<AnyNetwork>>,
             ),
-        ]));
+        ]))
+        .unwrap();
 
         let parameters = ReadContractParametersBuilder::default()
             .call(fooCall {
@@ -484,7 +487,8 @@ mod tests {
                 "url4".to_string(),
                 Box::new(mock_provider4) as Box<dyn Provider<AnyNetwork>>,
             ),
-        ]));
+        ]))
+        .unwrap();
 
         let parameters = ReadContractParametersBuilder::default()
             .call(fooCall {
@@ -592,7 +596,8 @@ mod tests {
                 "url3".to_string(),
                 Box::new(mock_provider3) as Box<dyn Provider<AnyNetwork>>,
             ),
-        ]));
+        ]))
+        .unwrap();
 
         let res = read_contract.get_block_number().await.unwrap();
         assert_eq!(res, 6_u64);
@@ -628,7 +633,8 @@ mod tests {
                 "url2".to_string(),
                 Box::new(mock_provider2) as Box<dyn Provider<AnyNetwork>>,
             ),
-        ]));
+        ]))
+        .unwrap();
 
         let res = read_contract.get_block_number().await;
         let err = res.err().unwrap();
@@ -692,7 +698,8 @@ mod tests {
                 "url3".to_string(),
                 Box::new(mock_provider3) as Box<dyn Provider<AnyNetwork>>,
             ),
-        ]));
+        ]))
+        .unwrap();
 
         let res = read_contract.get_chainid().await.unwrap();
         assert_eq!(res, 5_u64);
@@ -728,7 +735,8 @@ mod tests {
                 "url2".to_string(),
                 Box::new(mock_provider2) as Box<dyn Provider<AnyNetwork>>,
             ),
-        ]));
+        ]))
+        .unwrap();
 
         let res = read_contract.get_chainid().await;
         let err = res.err().unwrap();
