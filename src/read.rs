@@ -186,7 +186,7 @@ impl ReadableClient {
                     .call(WithOtherFields::new(transaction_request))
                     .await
                 {
-                    Ok(res) => C::abi_decode_returns(res.to_vec().as_slice())
+                    Ok(res) => C::abi_decode_returns(res.as_ref())
                         .map_err(|err| ReadableClientError::ReadDecodeReturnError(err.to_string())),
                     Err(provider_err) => {
                         if let Some(rpc_err) = provider_err.as_error_resp() {
