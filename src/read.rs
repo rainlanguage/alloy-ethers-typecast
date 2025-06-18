@@ -115,6 +115,53 @@ impl ReadableClient {
         }
     }
 
+    /// Attempts to execute the provided asynchronous operation with each
+    /// configured provider until one succeeds.
+    ///
+    /// # Arguments
+    ///
+    /// * `operation` - A closure that takes a reference to a [`ReadProvider`]
+    ///   and returns a future resolving to a `Result<T, ReadableClientError>`.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `T` - The type of the successful result returned by the operation.
+    /// * `Fut` - The future returned by the operation closure.
+    /// * `F` - The closure type, which must accept a `&ReadProvider` and
+    ///   return a `Fut`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(T)` if the operation succeeds with any provider.
+    /// * `Err(ReadableClientError::AllProvidersFailed)` if all providers fail,
+    ///   containing a map of provider URLs to their respective errors.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ReadableClientError::AllProvidersFailed` if the operation fails
+    /// for all providers.
+    async fn on_providers<'a, T, Fut, F>(
+        &'a self,
+        mut operation: F,
+    ) -> Result<T, ReadableClientError>
+    where
+        F: FnMut(&'a ReadProvider) -> Fut,
+        Fut: std::future::Future<Output = Result<T, ReadableClientError>> + 'a,
+    {
+        let mut errors: HashMap<String, ReadableClientError> = HashMap::new();
+
+        for (url, provider) in &self.providers {
+            match operation(provider).await {
+                Ok(value) => return Ok(value),
+                Err(err) => {
+                    errors.insert(url.clone(), err);
+                }
+            }
+        }
+
+        Err(ReadableClientError::AllProvidersFailed(errors))
+    }
+
     // Executes a read function on a contract.
     pub async fn read<C: SolCall>(
         &self,
@@ -132,75 +179,55 @@ impl ReadableClient {
             transaction_request
         };
 
-        let mut errors: HashMap<String, ReadableClientError> = HashMap::new();
-
-        for (url, provider) in &self.providers {
-            match provider
-                .call(WithOtherFields::new(transaction_request.clone()))
-                .await
-            {
-                Ok(res) => {
-                    return C::abi_decode_returns(res.to_vec().as_slice()).map_err(|err| {
-                        ReadableClientError::ReadDecodeReturnError(err.to_string())
-                    });
-                }
-                Err(provider_err) => {
-                    let error_to_insert = if let Some(rpc_err) = provider_err.as_error_resp() {
-                        match AbiDecodedErrorType::try_from_json_rpc_error(rpc_err.clone()).await {
-                            Ok(decoded_err) => {
-                                ReadableClientError::AbiDecodedErrorType(decoded_err)
+        self.on_providers(|provider| {
+            let transaction_request = transaction_request.clone();
+            async move {
+                match provider
+                    .call(WithOtherFields::new(transaction_request))
+                    .await
+                {
+                    Ok(res) => C::abi_decode_returns(res.to_vec().as_slice())
+                        .map_err(|err| ReadableClientError::ReadDecodeReturnError(err.to_string())),
+                    Err(provider_err) => {
+                        if let Some(rpc_err) = provider_err.as_error_resp() {
+                            match AbiDecodedErrorType::try_from_json_rpc_error(rpc_err.clone())
+                                .await
+                            {
+                                Ok(decoded_err) => {
+                                    Err(ReadableClientError::AbiDecodedErrorType(decoded_err))
+                                }
+                                Err(decode_failed_err) => Err(
+                                    ReadableClientError::AbiDecodeFailedErrors(decode_failed_err),
+                                ),
                             }
-                            Err(decode_failed_err) => {
-                                ReadableClientError::AbiDecodeFailedErrors(decode_failed_err)
-                            }
+                        } else {
+                            Err(ReadableClientError::RpcTransportKindError(provider_err))
                         }
-                    } else {
-                        ReadableClientError::RpcTransportKindError(provider_err)
-                    };
-                    errors.insert(url.clone(), error_to_insert);
+                    }
                 }
             }
-        }
-
-        Err(ReadableClientError::AllProvidersFailed(errors))
+        })
+        .await
     }
 
     pub async fn get_chainid(&self) -> Result<u64, ReadableClientError> {
-        let mut errors: HashMap<String, ReadableClientError> = HashMap::new();
-
-        for (url, provider) in &self.providers {
-            let res = provider
+        self.on_providers(|provider| async move {
+            provider
                 .get_chain_id()
                 .await
-                .map_err(|err| ReadableClientError::ReadChainIdError(err.to_string()));
-
-            if let Ok(chainid) = res {
-                return Ok(chainid);
-            } else {
-                errors.insert(url.clone(), res.err().unwrap());
-            }
-        }
-
-        Err(ReadableClientError::AllProvidersFailed(errors))
+                .map_err(|err| ReadableClientError::ReadChainIdError(err.to_string()))
+        })
+        .await
     }
 
     pub async fn get_block_number(&self) -> Result<u64, ReadableClientError> {
-        let mut errors: HashMap<String, ReadableClientError> = HashMap::new();
-
-        for (url, provider) in &self.providers {
-            let res = provider
+        self.on_providers(|provider| async move {
+            provider
                 .get_block_number()
                 .await
-                .map_err(|err| ReadableClientError::ReadBlockNumberError(err.to_string()));
-
-            if let Ok(block_number) = res {
-                return Ok(block_number);
-            } else {
-                errors.insert(url.clone(), res.err().unwrap());
-            }
-        }
-
-        Err(ReadableClientError::AllProvidersFailed(errors))
+                .map_err(|err| ReadableClientError::ReadBlockNumberError(err.to_string()))
+        })
+        .await
     }
 }
 
@@ -711,6 +738,96 @@ mod tests {
                 );
             }
             _ => panic!("unexpected error type"),
+        }
+
+        Ok(())
+    }
+
+    // ---------------------------------------------------------------------
+    // Additional tests for the generic `on_providers` helper
+    // ---------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_on_providers_success() -> anyhow::Result<()> {
+        let asserter1 = Asserter::new();
+        let asserter2 = Asserter::new();
+
+        // First provider will fail, second will succeed
+        let mock_provider1 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter1.clone());
+        let mock_provider2 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter2.clone());
+
+        let mock_error = ErrorPayload {
+            code: 3,
+            data: None,
+            message: "execution reverted".into(),
+        };
+        asserter1.push_failure(mock_error);
+        asserter2.push_success(&5_u64);
+
+        let client = ReadableClient::new(HashMap::from([
+            ("url1".to_string(), mock_provider1),
+            ("url2".to_string(), mock_provider2),
+        ]))?;
+
+        // Use the helper directly with a lightweight closure.
+        let chain_id = client
+            .on_providers(|provider| async move {
+                provider
+                    .get_chain_id()
+                    .await
+                    .map_err(|err| ReadableClientError::ReadChainIdError(err.to_string()))
+            })
+            .await?;
+
+        assert_eq!(chain_id, 5_u64);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_on_providers_all_fail() -> anyhow::Result<()> {
+        let asserter1 = Asserter::new();
+        let asserter2 = Asserter::new();
+
+        let mock_provider1 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter1.clone());
+        let mock_provider2 = ProviderBuilder::new()
+            .network::<AnyNetwork>()
+            .connect_mocked_client(asserter2.clone());
+
+        let mock_error = ErrorPayload {
+            code: 3,
+            data: None,
+            message: "execution reverted".into(),
+        };
+        asserter1.push_failure(mock_error.clone());
+        asserter2.push_failure(mock_error);
+
+        let client = ReadableClient::new(HashMap::from([
+            ("url1".to_string(), mock_provider1),
+            ("url2".to_string(), mock_provider2),
+        ]))?;
+
+        let res = client
+            .on_providers(|provider| async move {
+                provider
+                    .get_chain_id()
+                    .await
+                    .map_err(|err| ReadableClientError::ReadChainIdError(err.to_string()))
+            })
+            .await;
+
+        match res {
+            Err(ReadableClientError::AllProvidersFailed(errors)) => {
+                assert_eq!(errors.len(), 2);
+                assert!(errors.iter().all(|(_, e)| matches!(e, ReadableClientError::ReadChainIdError(msg) if msg.contains("execution reverted"))));
+            }
+            _ => panic!("expected aggregated error"),
         }
 
         Ok(())
