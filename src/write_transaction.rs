@@ -1,4 +1,4 @@
-use crate::transaction::{WritableClient, WritableClientError, WriteContractParameters};
+use crate::{WritableClient, WritableClientError, WriteContractParameters};
 use alloy::network::{AnyNetwork, AnyReceiptEnvelope};
 use alloy::providers::{Provider, WalletProvider};
 use alloy::rpc::types::{TransactionReceipt, TransactionRequest};
