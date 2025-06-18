@@ -140,7 +140,7 @@ impl ReadableClient {
     ///
     /// Returns `ReadableClientError::AllProvidersFailed` if the operation fails
     /// for all providers.
-    async fn on_providers<'a, T, Fut, F>(
+    pub async fn on_providers<'a, T, Fut, F>(
         &'a self,
         mut operation: F,
     ) -> Result<T, ReadableClientError>
