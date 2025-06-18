@@ -1,7 +1,9 @@
 use alloy::network::{AnyNetwork, TransactionBuilder};
 use alloy::primitives::{Address, U64};
+use alloy::providers::fillers::FillProvider;
 use alloy::providers::mock::Asserter;
-use alloy::providers::{Provider, ProviderBuilder};
+use alloy::providers::utils::JoinedRecommendedFillers;
+use alloy::providers::{Provider, ProviderBuilder, RootProvider};
 use alloy::rpc::types::TransactionRequest;
 use alloy::serde::WithOtherFields;
 use alloy::sol_types::SolCall;
@@ -45,8 +47,12 @@ pub struct ReadContractParameters<C: SolCall> {
     pub gas: Option<u64>,
 }
 
+pub type ReadProvider =
+    FillProvider<JoinedRecommendedFillers, RootProvider<AnyNetwork>, AnyNetwork>;
+
+#[derive(Debug, Clone)]
 pub struct ReadableClient {
-    providers: HashMap<String, Box<dyn Provider<AnyNetwork>>>,
+    providers: HashMap<String, ReadProvider>,
 }
 
 const MOCKED_PROVIDER_KEY: &str = "mocked_url";
@@ -59,7 +65,7 @@ impl ReadableClient {
             .await?;
 
         Ok(Self {
-            providers: HashMap::from([(url, Box::new(provider) as Box<dyn Provider<AnyNetwork>>)]),
+            providers: HashMap::from([(url, provider)]),
         })
     }
 
@@ -72,12 +78,12 @@ impl ReadableClient {
                     return None;
                 }
 
-                let provider: Box<dyn Provider<AnyNetwork>> = Box::new(
+                Some((
+                    url.to_owned(),
                     ProviderBuilder::new()
                         .network::<AnyNetwork>()
                         .connect_http(rpc_url),
-                );
-                Some((url.to_owned(), provider))
+                ))
             })
             .collect();
 
@@ -95,16 +101,11 @@ impl ReadableClient {
             .network::<AnyNetwork>()
             .connect_mocked_client(asserter);
         Self {
-            providers: HashMap::from([(
-                MOCKED_PROVIDER_KEY.to_string(),
-                Box::new(provider) as Box<dyn Provider<AnyNetwork>>,
-            )]),
+            providers: HashMap::from([(MOCKED_PROVIDER_KEY.to_string(), provider)]),
         }
     }
 
-    pub fn new(
-        providers: HashMap<String, Box<dyn Provider<AnyNetwork>>>,
-    ) -> Result<Self, ReadableClientError> {
+    pub fn new(providers: HashMap<String, ReadProvider>) -> Result<Self, ReadableClientError> {
         if providers.is_empty() {
             Err(ReadableClientError::CreateReadableClientHttpError(
                 "cannot initiate a read client with no providers given".to_string(),
@@ -395,18 +396,9 @@ mod tests {
         asserter3.push_success(&mock_response);
 
         let read_contract = ReadableClient::new(HashMap::from([
-            (
-                "url1".to_string(),
-                Box::new(mock_provider1) as Box<dyn Provider<AnyNetwork>>,
-            ),
-            (
-                "url2".to_string(),
-                Box::new(mock_provider2) as Box<dyn Provider<AnyNetwork>>,
-            ),
-            (
-                "url3".to_string(),
-                Box::new(mock_provider3) as Box<dyn Provider<AnyNetwork>>,
-            ),
+            ("url1".to_string(), mock_provider1),
+            ("url2".to_string(), mock_provider2),
+            ("url3".to_string(), mock_provider3),
         ]))
         .unwrap();
 
@@ -471,22 +463,10 @@ mod tests {
         });
 
         let read_contract = ReadableClient::new(HashMap::from([
-            (
-                "url1".to_string(),
-                Box::new(mock_provider1) as Box<dyn Provider<AnyNetwork>>,
-            ),
-            (
-                "url2".to_string(),
-                Box::new(mock_provider2) as Box<dyn Provider<AnyNetwork>>,
-            ),
-            (
-                "url3".to_string(),
-                Box::new(mock_provider3) as Box<dyn Provider<AnyNetwork>>,
-            ),
-            (
-                "url4".to_string(),
-                Box::new(mock_provider4) as Box<dyn Provider<AnyNetwork>>,
-            ),
+            ("url1".to_string(), mock_provider1),
+            ("url2".to_string(), mock_provider2),
+            ("url3".to_string(), mock_provider3),
+            ("url4".to_string(), mock_provider4),
         ]))
         .unwrap();
 
@@ -584,18 +564,9 @@ mod tests {
         asserter3.push_success(&mock_response);
 
         let read_contract = ReadableClient::new(HashMap::from([
-            (
-                "url1".to_string(),
-                Box::new(mock_provider1) as Box<dyn Provider<AnyNetwork>>,
-            ),
-            (
-                "url2".to_string(),
-                Box::new(mock_provider2) as Box<dyn Provider<AnyNetwork>>,
-            ),
-            (
-                "url3".to_string(),
-                Box::new(mock_provider3) as Box<dyn Provider<AnyNetwork>>,
-            ),
+            ("url1".to_string(), mock_provider1),
+            ("url2".to_string(), mock_provider2),
+            ("url3".to_string(), mock_provider3),
         ]))
         .unwrap();
 
@@ -625,14 +596,8 @@ mod tests {
         asserter.push_failure(mock_error);
 
         let read_contract = ReadableClient::new(HashMap::from([
-            (
-                "url1".to_string(),
-                Box::new(mock_provider1) as Box<dyn Provider<AnyNetwork>>,
-            ),
-            (
-                "url2".to_string(),
-                Box::new(mock_provider2) as Box<dyn Provider<AnyNetwork>>,
-            ),
+            ("url1".to_string(), mock_provider1),
+            ("url2".to_string(), mock_provider2),
         ]))
         .unwrap();
 
@@ -686,18 +651,9 @@ mod tests {
         asserter.push_success(&mock_response);
 
         let read_contract = ReadableClient::new(HashMap::from([
-            (
-                "url1".to_string(),
-                Box::new(mock_provider1) as Box<dyn Provider<AnyNetwork>>,
-            ),
-            (
-                "url2".to_string(),
-                Box::new(mock_provider2) as Box<dyn Provider<AnyNetwork>>,
-            ),
-            (
-                "url3".to_string(),
-                Box::new(mock_provider3) as Box<dyn Provider<AnyNetwork>>,
-            ),
+            ("url1".to_string(), mock_provider1),
+            ("url2".to_string(), mock_provider2),
+            ("url3".to_string(), mock_provider3),
         ]))
         .unwrap();
 
@@ -727,14 +683,8 @@ mod tests {
         asserter.push_failure(err);
 
         let read_contract = ReadableClient::new(HashMap::from([
-            (
-                "url1".to_string(),
-                Box::new(mock_provider1) as Box<dyn Provider<AnyNetwork>>,
-            ),
-            (
-                "url2".to_string(),
-                Box::new(mock_provider2) as Box<dyn Provider<AnyNetwork>>,
-            ),
+            ("url1".to_string(), mock_provider1),
+            ("url2".to_string(), mock_provider2),
         ]))
         .unwrap();
 
