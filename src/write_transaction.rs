@@ -1,13 +1,14 @@
 use crate::{WritableClient, WritableClientError, WriteContractParameters};
 use alloy::network::{AnyNetwork, AnyReceiptEnvelope};
-use alloy::providers::{Provider, WalletProvider};
+use alloy::providers::{PendingTransactionBuilder, Provider, WalletProvider};
 use alloy::rpc::types::{TransactionReceipt, TransactionRequest};
 use alloy::sol_types::SolCall;
 
 #[derive(Clone, Debug)]
 pub enum WriteTransactionStatus<C: SolCall> {
     PendingPrepare(Box<WriteContractParameters<C>>),
-    PendingSignAndSend(Box<TransactionRequest>),
+    PendingSign(Box<TransactionRequest>),
+    Sending,
     Confirmed(Box<TransactionReceipt<AnyReceiptEnvelope<alloy::rpc::types::Log>>>),
 }
 
@@ -48,31 +49,53 @@ impl<
         }
 
         self.prepare().await?;
-        self.sign_and_send().await?;
+        let pending_tx = self.sign().await?;
+        self.send(pending_tx).await?;
         Ok(())
     }
 
     async fn prepare(&mut self) -> Result<(), WritableClientError> {
         if let WriteTransactionStatus::PendingPrepare(parameters) = &self.status {
             let tx_request = parameters.build_transaction_request();
-            self.update_status(WriteTransactionStatus::PendingSignAndSend(Box::new(
-                tx_request,
-            )));
+            self.update_status(WriteTransactionStatus::PendingSign(Box::new(tx_request)));
         }
         Ok(())
     }
 
-    async fn sign_and_send(&mut self) -> Result<(), WritableClientError> {
-        if let WriteTransactionStatus::PendingSignAndSend(tx_request) = &self.status {
-            let pending_tx = self.client.send_request(*tx_request.to_owned()).await?;
+    /// Signs the prepared `TransactionRequest`, broadcasts it, updates status to
+    /// `PendingSend`, and returns the `PendingTransactionBuilder` so the caller
+    /// (usually `send`) can await confirmations.
+    async fn sign(&mut self) -> Result<PendingTransactionBuilder<AnyNetwork>, WritableClientError> {
+        if let WriteTransactionStatus::PendingSign(tx_request) = &self.status {
+            let pending_tx = self.client.send_request(*tx_request.clone()).await?;
+
+            // Inform observers that the transaction has been broadcast and we're awaiting confirmations.
+            self.update_status(WriteTransactionStatus::Sending(tx_request.clone()));
+
+            Ok(pending_tx.with_required_confirmations(self.confirmations.into()))
+        } else {
+            Err(WritableClientError::WriteSendTxError(
+                "sign called in invalid state".to_owned(),
+            ))
+        }
+    }
+
+    /// Awaits confirmations on the given `PendingTransactionBuilder` and, upon
+    /// success, transitions to `Confirmed`.
+    async fn send(
+        &mut self,
+        pending_tx: PendingTransactionBuilder<AnyNetwork>,
+    ) -> Result<(), WritableClientError> {
+        if let WriteTransactionStatus::Sending(_) = &self.status {
             let receipt = pending_tx
-                .with_required_confirmations(self.confirmations.into())
                 .get_receipt()
                 .await
                 .map_err(WritableClientError::WriteConfirmationError)?;
+
             if !receipt.inner.inner.status() {
                 return Err(WritableClientError::WriteFailedTxError());
             }
+
             self.update_status(WriteTransactionStatus::Confirmed(Box::new(receipt.inner)));
         }
         Ok(())
