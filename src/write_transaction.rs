@@ -63,14 +63,14 @@ impl<
     }
 
     /// Signs the prepared `TransactionRequest`, broadcasts it, updates status to
-    /// `PendingSend`, and returns the `PendingTransactionBuilder` so the caller
+    /// `Sending`, and returns the `PendingTransactionBuilder` so the caller
     /// (usually `send`) can await confirmations.
     async fn sign(&mut self) -> Result<PendingTransactionBuilder<AnyNetwork>, WritableClientError> {
         if let WriteTransactionStatus::PendingSign(tx_request) = &self.status {
             let pending_tx = self.client.send_request(*tx_request.clone()).await?;
 
             // Inform observers that the transaction has been broadcast and we're awaiting confirmations.
-            self.update_status(WriteTransactionStatus::Sending(tx_request.clone()));
+            self.update_status(WriteTransactionStatus::Sending);
 
             Ok(pending_tx.with_required_confirmations(self.confirmations.into()))
         } else {
@@ -86,7 +86,7 @@ impl<
         &mut self,
         pending_tx: PendingTransactionBuilder<AnyNetwork>,
     ) -> Result<(), WritableClientError> {
-        if let WriteTransactionStatus::Sending(_) = &self.status {
+        if let WriteTransactionStatus::Sending = &self.status {
             let receipt = pending_tx
                 .get_receipt()
                 .await
